@@ -1,0 +1,10 @@
+^C:\USERS\MARCE\DESKTOP\FRAKTALS-WEITER\VALIDATION\TOOLS\SHADER-METRICS\BUILD-MSVC\CMAKEFILES\4E04EE014B5FBEA9E4AC25C26970D05C\GENERATE.STAMP.RULE
+setlocal
+C:\Users\marce\AppData\Local\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.MSVCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin\cmake.exe -SC:/Users/marce/Desktop/Fraktals-Weiter/validation/tools/shader-metrics -BC:/Users/marce/Desktop/Fraktals-Weiter/validation/tools/shader-metrics/build-msvc --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/marce/Desktop/Fraktals-Weiter/validation/tools/shader-metrics/build-msvc/ShaderMetrics.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

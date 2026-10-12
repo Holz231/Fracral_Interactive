@@ -1,0 +1,19 @@
+resolution 1536x820
+224 steps: pending 21426, hit 1207613, escaped 30481
+gpu_ms 7.4079
+8192 steps: pending 0, hit 1229039, escaped 30481
+gpu_ms 12.4818
+16384 steps: pending 0, hit 1229044, escaped 30476
+gpu_ms 13.024
+restored_surface_pixels 21426
+changed_resolved_rays 0
+reference_difference 0
+verified_exterior_pixels 5
+completed_escape_rays 0
+profile 0: unfinished 0
+compacted_profile 0: unfinished 0 max_channel_difference 0 pixels_over_one_level 0
+profile 1: unfinished 0
+compacted_profile 1: unfinished 0 max_channel_difference 0 pixels_over_one_level 0
+profile 2: unfinished 0
+profile 2: original two-sample renderer retained
+passed 1

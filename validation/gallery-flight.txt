@@ -1,0 +1,3 @@
+20 seconds: level 2, zoom 4.36287, clearance 0.000137611, position 3.47724, 2.32348, -2.92719
+60 seconds: level 9, zoom 7.30948, clearance 0.000209966, position 2.37947, -0.994053, 3.29577
+180 seconds: level 28, zoom 16.0562, clearance 0.000117871, position -1.27376, -0.622363, -2.92716

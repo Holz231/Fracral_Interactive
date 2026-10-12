@@ -1,0 +1,36 @@
+# CMake generated Testfile for 
+# Source directory: C:/Users/marce/Desktop/Fraktals-Weiter
+# Build directory: C:/Users/marce/Desktop/Fraktals-Weiter/build-copy
+# 
+# This file includes the relevant testing commands required for 
+# testing this directory and lists subdirectories to be tested as well.
+if(CTEST_CONFIGURATION_TYPE MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
+  add_test([=[citadel_continuity]=] "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/Debug/CitadelTests.exe")
+  set_tests_properties([=[citadel_continuity]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;30;add_test;C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+  add_test([=[citadel_continuity]=] "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/Release/CitadelTests.exe")
+  set_tests_properties([=[citadel_continuity]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;30;add_test;C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$")
+  add_test([=[citadel_continuity]=] "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/MinSizeRel/CitadelTests.exe")
+  set_tests_properties([=[citadel_continuity]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;30;add_test;C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ww][Ii][Tt][Hh][Dd][Ee][Bb][Ii][Nn][Ff][Oo])$")
+  add_test([=[citadel_continuity]=] "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/RelWithDebInfo/CitadelTests.exe")
+  set_tests_properties([=[citadel_continuity]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;30;add_test;C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;0;")
+else()
+  add_test([=[citadel_continuity]=] NOT_AVAILABLE)
+endif()
+if(CTEST_CONFIGURATION_TYPE MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
+  add_test([=[fractal_geometry]=] "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/Debug/FractalTests.exe")
+  set_tests_properties([=[fractal_geometry]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;31;add_test;C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+  add_test([=[fractal_geometry]=] "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/Release/FractalTests.exe")
+  set_tests_properties([=[fractal_geometry]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;31;add_test;C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$")
+  add_test([=[fractal_geometry]=] "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/MinSizeRel/FractalTests.exe")
+  set_tests_properties([=[fractal_geometry]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;31;add_test;C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ww][Ii][Tt][Hh][Dd][Ee][Bb][Ii][Nn][Ff][Oo])$")
+  add_test([=[fractal_geometry]=] "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/RelWithDebInfo/FractalTests.exe")
+  set_tests_properties([=[fractal_geometry]=] PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;31;add_test;C:/Users/marce/Desktop/Fraktals-Weiter/CMakeLists.txt;0;")
+else()
+  add_test([=[fractal_geometry]=] NOT_AVAILABLE)
+endif()

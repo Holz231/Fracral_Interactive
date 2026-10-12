@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+project(AuroraDX12Probe LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+add_executable(AuroraDX12Probe main.cpp)
+target_compile_definitions(AuroraDX12Probe PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_options(AuroraDX12Probe PRIVATE /W4 /O2)
+target_link_libraries(AuroraDX12Probe PRIVATE d3d12 dxgi d3dcompiler)

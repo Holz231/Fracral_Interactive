@@ -1,0 +1,9 @@
+{
+  "First 64 steps": 3.95175625,
+  "First continuation": 8.43673625,
+  "Batches 2-4": 4.30272075,
+  "Batches 5-16": 5.711872,
+  "Batches 17-32": 5.904768,
+  "All queue scheduling": 0.807168,
+  "Refinement and lighting": 1.5302387499999999
+}

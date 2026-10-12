@@ -1,0 +1,4 @@
+temps 31 instructions 885
+temps 32 instructions 661
+temps 31 instructions 586
+temps 16 instructions 1923

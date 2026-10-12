@@ -1,0 +1,4 @@
+citadel_continuity 21 0.101927
+fractal_geometry 21 0.00493868
+frame_budget 5 0.00702094
+---

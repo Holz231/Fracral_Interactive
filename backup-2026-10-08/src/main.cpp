@@ -1,0 +1,361 @@
+#include "renderer.h"
+#include <windowsx.h>
+#include <dwmapi.h>
+#include <shellapi.h>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+
+extern "C" {
+__declspec(dllexport) DWORD NvOptimusEnablement=1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance=1;
+}
+using namespace aurora;
+using Clock=std::chrono::steady_clock;
+static constexpr wchar_t windowClass[]=L"AuroraFractalNative";
+static constexpr const wchar_t* palettes[][3]={{L"Opaline",L"Ember",L"Nocturne"},{L"Sunstone",L"Azure",L"Jade"}};
+struct Button {float x,y,w,h;int id;};
+struct App {
+    HWND window=nullptr;
+    Renderer renderer;
+    World world{1};
+    View view{1};
+    bool initialized=false,active=true,dirty=true,automatic=true,paused=false,hud=true,fullscreen=false,persist=true;
+    bool dragging=false,rightHeld=false,freeLook=false,cursorHidden=false;
+    int width=1440,height=900,palette=0,quality=1,hover=-1,lastX=0,lastY=0;
+    float uiScale=1;
+    double speed=1.9,fps=0;
+    std::array<bool,256> keys{};
+    std::vector<Button> buttons;
+    WINDOWPLACEMENT placement{sizeof(WINDOWPLACEMENT)};
+    DWORD windowStyle=WS_OVERLAPPEDWINDOW;
+    std::filesystem::path directory;
+    std::wstring statusNote;
+    bool locked() const {return rightHeld||freeLook;}
+    void cursor() {
+        bool lock=locked() && active;
+        if(lock!=cursorHidden) {ShowCursor(lock?FALSE:TRUE);cursorHidden=lock;}
+        if(lock) {
+            RECT r{};GetClientRect(window,&r);POINT a{r.left,r.top},b{r.right,r.bottom};ClientToScreen(window,&a);ClientToScreen(window,&b);
+            RECT screen{a.x,a.y,b.x,b.y};ClipCursor(&screen);
+        } else ClipCursor(nullptr);
+    }
+    void releaseLook() {rightHeld=freeLook=dragging=false;ReleaseCapture();cursor();}
+    void manual() {automatic=false;world.hasDestination=false;dirty=true;}
+    void rotate(int dx,int dy) {manual();view.yaw+=dx*.003;view.pitch=std::clamp(view.pitch-dy*.003,-1.52,1.52);}
+    void setFullscreen() {
+        releaseLook();
+        if(!fullscreen) {
+            placement.length=sizeof(placement);GetWindowPlacement(window,&placement);
+            MONITORINFO mi{sizeof(mi)};GetMonitorInfo(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&mi);
+            SetWindowLongPtr(window,GWL_STYLE,windowStyle&~WS_OVERLAPPEDWINDOW);
+            SetWindowPos(window,HWND_TOP,mi.rcMonitor.left,mi.rcMonitor.top,mi.rcMonitor.right-mi.rcMonitor.left,mi.rcMonitor.bottom-mi.rcMonitor.top,SWP_FRAMECHANGED);
+            fullscreen=true;
+        } else {
+            SetWindowLongPtr(window,GWL_STYLE,windowStyle);SetWindowPlacement(window,&placement);
+            SetWindowPos(window,nullptr,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_FRAMECHANGED);fullscreen=false;
+        }
+        dirty=true;
+    }
+    void save() {
+        if(!persist) return;
+        std::ofstream out(directory/L"settings.txt");
+        if(out) out<<palette<<' '<<quality<<' '<<speed<<' '<<automatic<<' '<<world.kind<<'\n';
+    }
+    void restore() {
+        std::ifstream in(directory/L"settings.txt");int p=0,q=1,a=1;double s=1.9;
+        if(in>>p>>q>>s>>a) {
+            palette=std::clamp(p,0,2);quality=std::clamp(q,0,2);speed=std::clamp(s,.2,5.);automatic=a!=0;
+            int kind=1;if(in>>kind) {kind=std::clamp(kind,0,1);world=World(kind);view=View(kind);}
+        }
+    }
+    void action(int id) {
+        switch(id) {
+            case 0: automatic=!automatic;world.hasDestination=false;paused=false;break;
+            case 1: paused=!paused;break;
+            case 2: palette=(palette+1)%3;break;
+            case 3: quality=(quality+1)%3;renderer.setQuality(quality);break;
+            case 4: setFullscreen();break;
+            case 5: world=World(world.kind);view=View(world.kind);paused=false;break;
+            case 6: speed=std::max(.2,speed-.1);break;
+            case 7: speed=std::min(5.,speed+.1);break;
+            case 8: world=World(1-world.kind);view=View(world.kind);paused=false;automatic=true;break;
+        }
+        dirty=true;save();
+    }
+    int hit(float x,float y) const {
+        if(!hud) return -1;
+        for(const auto& b:buttons) if(x>=b.x && y>=b.y && x<b.x+b.w && y<b.y+b.h) return b.id;
+        return -1;
+    }
+    bool moving() const {
+        if(paused) return false;
+        return automatic||keys['W']||keys['A']||keys['S']||keys['D']||keys['Q']||keys['E']||keys[VK_LEFT]||keys[VK_RIGHT]||keys[VK_UP]||keys[VK_DOWN];
+    }
+    void update(double dt) {
+        if(!moving()) return;
+        if(automatic) {
+            Vec3 d=world.guide(world.toDomain(view.forward()).unit(),dt);
+            view.face(world.fromDomain(d));world.advance(d*(dt*speed*world.clearance*.95));
+        } else {
+            view.yaw+=dt*.9*(int(keys[VK_RIGHT])-int(keys[VK_LEFT]));
+            view.pitch=std::clamp(view.pitch+dt*.9*(int(keys[VK_UP])-int(keys[VK_DOWN])),-1.52,1.52);
+            double f=int(keys['W'])-int(keys['S']),r=int(keys['D'])-int(keys['A']),y=int(keys['E'])-int(keys['Q']);
+            Vec3 dir=view.forward()*f+view.right()*r+view.frame({0,y,0});
+            double velocity=dt*speed*world.clearance*(keys[VK_SHIFT]?3:1)/std::max(1.,std::sqrt(f*f+r*r+y*y));
+            world.advance(world.toDomain(dir)*(velocity/(world.kind==1?1:1.25)));
+        }
+        for(const auto& warp:world.warps) view.apply(warp);
+        world.warps.clear();
+        world.prepare();dirty=true;
+    }
+    void overlay() {
+        buttons.clear();if(!hud) return;
+        auto panel=D2D1::ColorF(.025f,.045f,.065f,.87f),ink=D2D1::ColorF(.87f,.94f,.96f),muted=D2D1::ColorF(.52f,.67f,.72f),teal=D2D1::ColorF(.40f,.88f,.84f);
+        const float w=width/uiScale,h=height/uiScale;
+        renderer.beginOverlay(uiScale);
+        renderer.rect(22,20,330,100,panel,12);
+        renderer.text(L"A U R O R A",38,30,285,38,2,ink);
+        renderer.text(world.kind==1?L"MANDELBOX CITADEL":L"IRIDESCENT VAULTS",40,69,290,24,0,muted);
+        renderer.text(paused?L"PAUSED":automatic?L"GUIDED DIVE":L"FREE FLIGHT",40,92,270,24,0,teal);
+        renderer.rect(214,88,122,25,hover==8?D2D1::ColorF(.19f,.26f,.3f):D2D1::ColorF(.1f,.15f,.19f),5);
+        renderer.text(L"T  Change world",224,91,108,22,0,ink);buttons.push_back({214,88,122,25,8});
+        renderer.rect(w-250,20,228,100,panel,12);
+        std::wostringstream perf;
+        if(!moving()) perf<<L"GPU idle";
+        else if(fps>0) perf<<std::fixed<<std::setprecision(0)<<fps<<L" fps";
+        else perf<<L"Ready";
+        if(renderer.milliseconds()>0) perf<<L"  /  "<<std::setprecision(1)<<renderer.milliseconds()<<L" ms GPU";
+        renderer.text(perf.str(),w-234,32,205,28,1,ink);
+        std::wostringstream detail;detail<<renderer.sceneWidth()<<L" x "<<renderer.sceneHeight()<<L"  /  "<<profiles[quality].name;
+        renderer.text(detail.str(),w-234,63,210,22,0,muted);
+        std::wostringstream zoom;zoom<<L"Zoom  ";
+        if(world.zoomLog10<5) zoom<<std::fixed<<std::setprecision(world.zoomLog10<1?1:0)<<std::pow(10.,world.zoomLog10)<<L"x";
+        else zoom<<L"10^"<<std::fixed<<std::setprecision(1)<<world.zoomLog10<<L"x";
+        renderer.text(zoom.str(),w-234,87,205,24,0,teal);
+        float toolbarY=h-116;
+        renderer.rect(22,toolbarY,w-44,94,panel,12);
+        float x=36;
+        auto button=[&](int id,float size,const std::wstring& label,bool selected=false) {
+            float y=toolbarY+13;
+            auto color=selected?D2D1::ColorF(.13f,.39f,.39f):id==hover?D2D1::ColorF(.19f,.26f,.30f):D2D1::ColorF(.10f,.15f,.19f);
+            renderer.rect(x,y,size,34,color,6);renderer.text(label,x+10,y+7,size-14,23,0,ink);
+            buttons.push_back({x,y,size,34,id});x+=size+8;
+        };
+        bool compact=w<1060;
+        button(0,compact?112.f:135.f,automatic?L"G  Take control":L"G  Guided dive",automatic);
+        button(1,78,paused?L"Continue":L"Pause",paused);
+        button(2,100,palettes[world.kind][palette]);
+        button(3,compact?112.f:130.f,profiles[quality].name);
+        button(4,compact?80.f:100.f,compact?L"F  Screen":L"F  Fullscreen");
+        button(5,66,L"R  Reset");
+        if(x+156<w-32) {
+            button(6,30,L"-");
+            std::wostringstream v;v<<std::fixed<<std::setprecision(1)<<speed<<L"x";
+            renderer.text(v.str(),x+8,toolbarY+21,62,24,0,ink);x+=65;
+            button(7,30,L"+");
+        }
+        renderer.text(L"WASD move    Q/E down / up    Drag / hold right mouse to look    Shift boost    Wheel speed    Space pause    H hide",38,toolbarY+60,w-76,24,0,muted);
+        if(!automatic) {
+            renderer.rect(w*.5f-5,h*.5f-.5f,10,1,D2D1::ColorF(.8f,.95f,1.f,.48f));
+            renderer.rect(w*.5f-.5f,h*.5f-5,1,10,D2D1::ColorF(.8f,.95f,1.f,.48f));
+        }
+        renderer.endOverlay();
+    }
+};
+static LRESULT CALLBACK windowProc(HWND hwnd,UINT message,WPARAM w,LPARAM l) {
+    auto* app=reinterpret_cast<App*>(GetWindowLongPtr(hwnd,GWLP_USERDATA));
+    if(message==WM_NCCREATE) {
+        app=static_cast<App*>(reinterpret_cast<CREATESTRUCT*>(l)->lpCreateParams);
+        app->window=hwnd;SetWindowLongPtr(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(app));
+    }
+    if(!app) return DefWindowProc(hwnd,message,w,l);
+    try {
+        switch(message) {
+        case WM_ERASEBKGND:return 1;
+        case WM_PAINT:{PAINTSTRUCT p{};BeginPaint(hwnd,&p);EndPaint(hwnd,&p);app->dirty=true;return 0;}
+        case WM_SIZE:
+            if(w!=SIZE_MINIMIZED && LOWORD(l)>0 && HIWORD(l)>0) {
+                app->width=LOWORD(l);app->height=HIWORD(l);
+                if(app->initialized) app->renderer.resize(app->width,app->height);
+                app->dirty=true;app->cursor();
+            }return 0;
+        case WM_DPICHANGED:{app->uiScale=float(HIWORD(w))/96;auto* r=reinterpret_cast<RECT*>(l);SetWindowPos(hwnd,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER);return 0;}
+        case WM_GETMINMAXINFO:{auto* info=reinterpret_cast<MINMAXINFO*>(l);float scale=float(GetDpiForWindow(hwnd))/96;info->ptMinTrackSize={LONG(900*scale),LONG(570*scale)};return 0;}
+        case WM_ACTIVATEAPP:app->active=w!=0;if(!app->active) {app->keys.fill(false);app->releaseLook();}app->dirty=true;return 0;
+        case WM_LBUTTONDOWN: {
+            int x=GET_X_LPARAM(l),y=GET_Y_LPARAM(l),button=app->hit(x/app->uiScale,y/app->uiScale);
+            if(button>=0) app->action(button);
+            else {app->dragging=true;app->lastX=x;app->lastY=y;app->manual();SetCapture(hwnd);}
+            return 0;
+        }
+        case WM_LBUTTONUP:app->dragging=false;ReleaseCapture();return 0;
+        case WM_LBUTTONDBLCLK:
+            if(app->hit(GET_X_LPARAM(l)/app->uiScale,GET_Y_LPARAM(l)/app->uiScale)<0) {app->freeLook=!app->freeLook;app->dragging=false;app->manual();app->cursor();}return 0;
+        case WM_RBUTTONDOWN:app->rightHeld=true;app->manual();SetCapture(hwnd);app->cursor();return 0;
+        case WM_RBUTTONUP:app->rightHeld=false;ReleaseCapture();app->cursor();return 0;
+        case WM_CAPTURECHANGED:app->dragging=false;if(!app->freeLook){app->rightHeld=false;app->cursor();}return 0;
+        case WM_MOUSEMOVE: {
+            int x=GET_X_LPARAM(l),y=GET_Y_LPARAM(l);
+            if(app->dragging && !app->locked()) app->rotate(x-app->lastX,y-app->lastY);
+            app->lastX=x;app->lastY=y;
+            int hover=app->hit(x/app->uiScale,y/app->uiScale);if(hover!=app->hover){app->hover=hover;app->dirty=true;}
+            return 0;
+        }
+        case WM_MOUSEWHEEL:app->speed=std::clamp(app->speed+GET_WHEEL_DELTA_WPARAM(w)/double(WHEEL_DELTA)*.1,.2,5.);app->dirty=true;app->save();return 0;
+        case WM_INPUT:
+            if(app->locked() && app->active) {
+                RAWINPUT input{};UINT size=sizeof(input);
+                if(GetRawInputData(reinterpret_cast<HRAWINPUT>(l),RID_INPUT,&input,&size,sizeof(RAWINPUTHEADER))==size && input.header.dwType==RIM_TYPEMOUSE)
+                    app->rotate(input.data.mouse.lLastX,input.data.mouse.lLastY);
+            }
+            return DefWindowProc(hwnd,message,w,l);
+        case WM_KEYDOWN:case WM_SYSKEYDOWN: {
+            if(w<256) app->keys[w]=true;
+            if(l&(1LL<<30)) return 0;
+            switch(w) {
+            case 'G':app->action(0);break;case VK_SPACE:app->action(1);break;case 'P':app->action(2);break;case 'K':app->action(3);break;
+            case 'F':app->action(4);break;case 'R':app->action(5);break;case VK_OEM_MINUS:case VK_SUBTRACT:app->action(6);break;
+            case VK_OEM_PLUS:case VK_ADD:app->action(7);break;
+            case 'H':app->hud=!app->hud;app->dirty=true;break;
+            case 'T':app->action(8);break;
+            case VK_ESCAPE:if(app->locked()) app->releaseLook();else if(app->fullscreen) app->setFullscreen();else app->action(1);break;
+            case 'W':case 'A':case 'S':case 'D':case 'Q':case 'E':case VK_UP:case VK_DOWN:case VK_LEFT:case VK_RIGHT:app->manual();break;
+            default:return DefWindowProc(hwnd,message,w,l);
+            }return 0;
+        }
+        case WM_KEYUP:case WM_SYSKEYUP:if(w<256) app->keys[w]=false;return 0;
+        case WM_CLOSE:app->save();DestroyWindow(hwnd);return 0;
+        case WM_DESTROY:app->releaseLook();PostQuitMessage(0);return 0;
+        }
+    } catch(const std::exception& e) {MessageBoxA(hwnd,e.what(),"Aurora graphics error",MB_OK|MB_ICONERROR);DestroyWindow(hwnd);return 0;}
+    return DefWindowProc(hwnd,message,w,l);
+}
+static std::string utf8(const std::wstring& text) {
+    int n=WideCharToMultiByte(CP_UTF8,0,text.data(),int(text.size()),nullptr,0,nullptr,nullptr);
+    std::string result(n,'\0');WideCharToMultiByte(CP_UTF8,0,text.data(),int(text.size()),result.data(),n,nullptr,nullptr);return result;
+}
+static int validateNative(App& app) {
+    auto dir=std::filesystem::current_path()/L"validation";std::filesystem::create_directories(dir);
+    app.uiScale=1;app.width=1280;app.height=720;app.renderer.resize(1280,720);
+    app.world.prepare();double initialBalanced=app.renderer.profileMilliseconds(app.world,app.view,1);
+    double initialUltra=app.renderer.profileMilliseconds(app.world,app.view,2);
+    app.renderer.setQuality(1);app.renderer.render(app.world,app.view,0,false);app.overlay();app.renderer.capture((dir/L"aurora-native.png").wstring());
+    // Capture a deep chart as it is reached, before the pilot can fly out.
+    Vec3 heading=app.view.forward();
+    for(int i=0;i<24000;i++) {
+        app.world.advance(heading*(app.world.clearance*.95*1.9/60));app.world.prepare();
+        for(const auto& warp:app.world.warps) {heading=transport(heading,warp);app.view.apply(warp);}
+        app.world.warps.clear();
+        if(app.world.level>=12 && (app.world.kind==1 || app.world.parentCount>0)) break;
+    }
+    if(app.world.level<12) throw std::runtime_error("Native validation did not reach a deep chart");
+    app.world.prepare();double deepBalanced=app.renderer.profileMilliseconds(app.world,app.view,1);
+    double deepUltra=app.renderer.profileMilliseconds(app.world,app.view,2);
+    app.quality=2;app.palette=2;app.renderer.setQuality(2);app.renderer.render(app.world,app.view,2,false);app.overlay();app.renderer.capture((dir/L"deep-flight.png").wstring());
+    int deepLevel=app.world.level,deepParents=app.world.parentCount;
+    // Exercise resize, every quality shader and each palette on the GPU.
+    for(int i=0;i<3;i++) {app.renderer.resize(960+i*160,640+i*40);app.renderer.setQuality(i);app.renderer.render(app.world,app.view,i,false);}
+    // Exercise the same input/controller functions used by the real window.
+    app.action(5);app.automatic=false;app.paused=false;app.keys['W']=true;
+    Vec3 before=app.world.camera;app.update(1./60);
+    if((app.world.camera-before).length()<=0) throw std::runtime_error("Manual forward input did not move the camera");
+    app.keys.fill(false);before=app.world.camera;app.update(.1);
+    if((app.world.camera-before).length()!=0 || app.moving()) throw std::runtime_error("Idle input kept moving");
+    app.automatic=true;app.paused=true;app.update(.1);
+    if((app.world.camera-before).length()!=0) throw std::runtime_error("Pause failed to freeze flight");
+    app.action(1);app.action(0);app.action(2);app.action(3);app.action(8);
+    app.world.prepare();app.renderer.render(app.world,app.view,0,false);app.action(8);
+    World vault;View vaultView;auto culling=app.renderer.benchmark(vault,vaultView);
+    int pixelError=app.renderer.benchmarkMaxPixelDifference;
+    size_t changed=app.renderer.benchmarkPixelsOverTolerance;
+    std::ofstream report(dir/L"gpu-benchmark.json");
+    report<<std::fixed<<std::setprecision(4)<<"{\n  \"adapter\": \""<<utf8(app.renderer.adapterName)<<"\",\n"
+        <<"  \"world\": \"Mandelbox Julia citadel\",\n  \"resolution\": \"1280x720\",\n  \"timing_scope\": \"GPU fractal pass; excludes upscaling, UI and vsync\",\n"
+        <<"  \"balanced\": {\"ray_steps\": 224, \"shadow_steps\": 4, \"initial_gpu_ms\": "<<initialBalanced<<", \"deep_gpu_ms\": "<<deepBalanced<<"},\n"
+        <<"  \"ultra\": {\"ray_steps\": 320, \"shadow_steps\": 8, \"initial_gpu_ms\": "<<initialUltra<<", \"deep_gpu_ms\": "<<deepUltra<<"},\n"
+        <<"  \"vault_culling_check\": {\"ray_steps\": 132, \"shadow_steps\": 8, \"baseline_gpu_ms\": "<<culling.first<<", \"optimized_gpu_ms\": "<<culling.second<<", \"max_channel_difference\": "<<pixelError<<", \"pixels_over_one_level\": "<<changed<<"},\n"
+        <<"  \"deep_chart_level\": "<<deepLevel<<",\n  \"deep_parent_cavities\": "<<deepParents<<",\n  \"all_quality_shaders_and_resize_passed\": true,\n  \"manual_pause_idle_and_controls_passed\": true\n}\n";
+    if(changed) throw std::runtime_error("GPU image equivalence test failed; see validation/gpu-benchmark.json");
+    return 0;
+}
+static int gallery(App& app) {
+    auto dir=std::filesystem::current_path()/L"validation";std::filesystem::create_directories(dir);
+    app.renderer.resize(960,600);app.renderer.setQuality(2);
+    const Vec3 cameras[]={{3.8,2.6,-5.5},{3.1,1.6,-4.5},{.6,.15,-3.1},{1.5,1.15,-4.6},{.1,.1,-3.1},{2.5,3.,-3.8},{-2.6,1.7,-4.8},{.8,1.1,-2.}};
+    for(int i=0;i<8;i++) {
+        app.world=World(1);
+        app.world.camera=cameras[i];app.world.refresh();app.world.prepare();
+        app.view=View(1);app.view.face(Vec3{.4,.7,0}-app.world.camera);
+        app.renderer.render(app.world,app.view,0,false);app.renderer.capture((dir/(L"gallery-"+std::to_wstring(i)+L".png")).wstring());
+    }
+    app.world=World(1);app.view=View(1);app.automatic=true;
+    std::ofstream flight(dir/L"gallery-flight.txt");
+    for(int frame=0;frame<10800;frame++) {
+        app.update(1./60);
+        if(frame==1199 || frame==3599 || frame==10799) {
+            app.renderer.render(app.world,app.view,0,false);app.renderer.capture((dir/(L"guided-"+std::to_wstring(frame/60+1)+L".png")).wstring());
+            flight<<frame/60+1<<" seconds: level "<<app.world.level<<", zoom "<<app.world.zoomLog10<<", clearance "<<app.world.clearance<<", position "<<app.world.camera.x<<", "<<app.world.camera.y<<", "<<app.world.camera.z<<'\n';
+            if(frame==3599) {
+                World before=app.world;View orientation=app.view;
+                app.world.zoomIn();for(const auto& warp:app.world.warps) app.view.apply(warp);app.world.warps.clear();app.world.prepare();
+                app.renderer.render(app.world,app.view,0,false);app.renderer.capture((dir/L"chart-after.png").wstring());
+                app.world=before;app.view=orientation;
+            }
+        }
+    }
+    return 0;
+}
+int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
+    bool galleryMode=std::wstring(commandLine).find(L"--gallery")!=std::wstring::npos;
+    bool benchmark=galleryMode||std::wstring(commandLine).find(L"--benchmark")!=std::wstring::npos;
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    int result=0;
+    try {
+        App app;app.persist=!benchmark;
+        wchar_t executable[MAX_PATH]{};GetModuleFileName(nullptr,executable,MAX_PATH);app.directory=std::filesystem::path(executable).parent_path();
+        if(!benchmark) app.restore();
+        WNDCLASSEX wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW|CS_DBLCLKS;wc.lpfnWndProc=windowProc;wc.hInstance=instance;
+        wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.hIcon=LoadIcon(nullptr,IDI_APPLICATION);wc.lpszClassName=windowClass;RegisterClassEx(&wc);
+        RECT bounds{0,0,benchmark?1280:1440,benchmark?720:900};AdjustWindowRectEx(&bounds,app.windowStyle,FALSE,0);
+        HWND window=CreateWindowEx(0,windowClass,L"Aurora — Native Fractal Flight",app.windowStyle,CW_USEDEFAULT,CW_USEDEFAULT,bounds.right-bounds.left,bounds.bottom-bounds.top,nullptr,nullptr,instance,&app);
+        if(!window) throw std::runtime_error("Could not create the flight window");
+        app.uiScale=benchmark?1:float(GetDpiForWindow(window))/96;
+        BOOL dark=TRUE;DwmSetWindowAttribute(window,20,&dark,sizeof(dark));
+        RECT client{};GetClientRect(window,&client);app.width=client.right;app.height=client.bottom;
+        app.renderer.initialize(window,app.width,app.height);app.initialized=true;app.renderer.setQuality(app.quality);
+        RAWINPUTDEVICE raw{1,2,0,window};RegisterRawInputDevices(&raw,1,sizeof(raw));
+        if(benchmark) {result=galleryMode?gallery(app):validateNative(app);DestroyWindow(window);}
+        else {
+            std::ofstream adapterLog(app.directory/L"last-run.txt");adapterLog<<"Direct3D 11 hardware adapter: "<<utf8(app.renderer.adapterName)<<"\n";adapterLog.flush();
+            ShowWindow(window,SW_SHOW);UpdateWindow(window);
+            auto last=Clock::now(),stats=last;int frames=0;bool quit=false;
+            while(!quit) {
+                MSG message{};
+                while(PeekMessage(&message,nullptr,0,0,PM_REMOVE)) {
+                    if(message.message==WM_QUIT){quit=true;break;}
+                    TranslateMessage(&message);DispatchMessage(&message);
+                }
+                if(quit) break;
+                auto now=Clock::now();double dt=std::min(.05,std::chrono::duration<double>(now-last).count());last=now;
+                if(!app.active || IsIconic(window)) {MsgWaitForMultipleObjectsEx(0,nullptr,INFINITE,QS_ALLINPUT,MWMO_INPUTAVAILABLE);last=Clock::now();stats=last;frames=0;continue;}
+                app.update(dt);
+                if(app.moving() && app.renderer.adapt(dt)) app.dirty=true;
+                if(app.dirty) {
+                    app.world.prepare();app.renderer.render(app.world,app.view,app.palette);app.overlay();app.renderer.present();app.dirty=false;frames++;
+                    double elapsed=std::chrono::duration<double>(now-stats).count();
+                    if(elapsed>=.75) {app.fps=frames/elapsed;frames=0;stats=now;}
+                }
+                if(!app.moving() && !app.dirty) {MsgWaitForMultipleObjectsEx(0,nullptr,INFINITE,QS_ALLINPUT,MWMO_INPUTAVAILABLE);last=Clock::now();stats=last;frames=0;}
+            }
+        }
+    } catch(const std::exception& e) {
+        std::ofstream log(std::filesystem::current_path()/L"aurora-error.txt");log<<e.what()<<'\n';
+        if(!benchmark) MessageBoxA(nullptr,e.what(),"Aurora could not start",MB_OK|MB_ICONERROR);
+        result=1;
+    }
+    CoUninitialize();return result;
+}

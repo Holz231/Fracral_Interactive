@@ -1,0 +1,13 @@
+{
+  "guided_minutes": 10,
+  "passages_entered": 46,
+  "distance_comparisons": 19200,
+  "zoom_continuity_checks": 240,
+  "max_zoom_power_of_ten": 16.2982,
+  "deep_coordinate_changes": 58,
+  "max_parent_cavities": 8,
+  "queries": 360000,
+  "baseline_cpu_ms": 27.1405,
+  "optimized_cpu_ms": 6.9844,
+  "cpu_speedup": 3.8859
+}

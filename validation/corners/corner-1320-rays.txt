@@ -1,0 +1,19 @@
+resolution 960x540
+224 steps: pending 2901, hit 276687, escaped 238812
+gpu_ms 1.52211
+8192 steps: pending 0, hit 279588, escaped 238812
+gpu_ms 2.17588
+16384 steps: pending 9, hit 280110, escaped 238281
+gpu_ms 34.9952
+restored_surface_pixels 2901
+changed_resolved_rays 0
+reference_difference 0
+verified_exterior_pixels 522
+completed_escape_rays 9
+profile 0: unfinished 0
+compacted_profile 0: unfinished 0 max_channel_difference 0 pixels_over_one_level 0
+profile 1: unfinished 0
+compacted_profile 1: unfinished 0 max_channel_difference 0 pixels_over_one_level 0
+profile 2: unfinished 0
+profile 2: original two-sample renderer retained
+passed 1

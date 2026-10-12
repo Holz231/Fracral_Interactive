@@ -1,0 +1,58 @@
+--- before/src/main.cpp
++++ src/main.cpp
+@@ -486,7 +486,7 @@
+     }
+     return 0;
+ }
+-static int frameProfile(App& app) {
++static int frameProfile(App& app,bool exerciseSwitch=false) {
+     loadFlight(app.world,app.view,std::filesystem::current_path()/L"last-flight.aurora");
+     auto dir=std::filesystem::current_path()/L"validation"/L"frame-profile";
+     std::filesystem::create_directories(dir);
+@@ -494,10 +494,13 @@
+     app.renderer.setQuality(1);app.automatic=false;app.paused=false;app.keys.fill(false);
+     // Exercise automatic slow-frame capture in the isolated validation folder.
+     app.directory=dir;app.persist=true;app.slowestGpuMs=0;app.enableFlightDiagnostics();
+-    std::ofstream output(dir/(app.renderer.hasFramePacing()?L"paced.csv":L"legacy.csv"));
+-    output<<"frame,wait_ms,prepare_ms,submit_ms,overlay_ms,present_ms,total_ms,gpu_ms\n";
++    std::ofstream output(dir/(exerciseSwitch?L"switching.csv":app.renderer.hasFramePacing()?L"paced.csv":L"legacy.csv"));
++    output<<"frame,wait_ms,prepare_ms,submit_ms,overlay_ms,present_ms,total_ms,gpu_ms,compacted\n";
+     auto ms=[](auto a,auto b){return std::chrono::duration<double,std::milli>(b-a).count();};
+-    for(int frame=0;frame<180;frame++) {
++    int activeFrames=0,switches=0;bool previous=false;
++    int fixedWidth=app.renderer.sceneWidth(),fixedHeight=app.renderer.sceneHeight();
++    for(int frame=0;frame<(exerciseSwitch?300:180);frame++) {
++        if(exerciseSwitch && frame==180) {app.world=World(1);app.view=View(1);}
+         auto begin=Clock::now();
+         while(!app.renderer.waitForFrame()) {
+             MSG message{};while(PeekMessage(&message,nullptr,0,0,PM_REMOVE)) {
+@@ -508,8 +511,15 @@
+         auto a=Clock::now();app.world.prepare();auto b=Clock::now();
+         app.renderer.render(app.world,app.view,0);app.recordFlightFrame();auto c=Clock::now();
+         app.overlay();auto d=Clock::now();app.renderer.present();auto e=Clock::now();
+-        output<<frame<<','<<ms(begin,a)<<','<<ms(a,b)<<','<<ms(b,c)<<','<<ms(c,d)<<','<<ms(d,e)<<','<<ms(begin,e)<<','<<app.renderer.sampledMilliseconds()<<'\n';
+-    }
++        output<<frame<<','<<ms(begin,a)<<','<<ms(a,b)<<','<<ms(b,c)<<','<<ms(c,d)<<','<<ms(d,e)<<','<<ms(begin,e)<<','<<app.renderer.sampledMilliseconds()<<','<<app.renderer.usedCompaction()<<'\n';
++        bool compacted=app.renderer.usedCompaction();
++        if(frame<180) activeFrames+=compacted;
++        switches+=compacted!=previous;previous=compacted;
++        if(app.renderer.sceneWidth()!=fixedWidth || app.renderer.sceneHeight()!=fixedHeight)
++            throw std::runtime_error("Frame profile changed rendering resolution");
++    }
++    if(exerciseSwitch && (activeFrames<120 || app.renderer.usedCompaction() || switches!=2))
++        throw std::runtime_error("Compacted renderer failed the heavy/light switching check");
+     if(!app.slowestFrame.serial) throw std::runtime_error("Frame profile collected no matched GPU timings");
+     app.saveSlowFlight();
+     World restored(1);View restoredView(1);loadFlight(restored,restoredView,dir/L"slow-flight.aurora");
+@@ -592,8 +602,10 @@
+         BOOL dark=TRUE;DwmSetWindowAttribute(window,20,&dark,sizeof(dark));
+         RECT client{};GetClientRect(window,&client);app.width=client.right;app.height=client.bottom;
+         app.renderer.initialize(window,app.width,app.height,!legacyPacing);app.initialized=true;app.renderer.setQuality(app.quality);
++        if(std::wstring(commandLine).find(L"--trace-compact")!=std::wstring::npos) app.renderer.setTracePath(1);
++        else if(std::wstring(commandLine).find(L"--trace-legacy")!=std::wstring::npos) app.renderer.setTracePath(0);
+         RAWINPUTDEVICE raw{1,2,0,window};RegisterRawInputDevices(&raw,1,sizeof(raw));
+-        if(benchmark) {result=frameMode?frameProfile(app):replayMode?replay(app):huntMode?hunt(app):profileMode?profile(app):cornersMode?corners(app):gapsMode?gaps(app):regressionMode?regression(app):galleryMode?gallery(app):validateNative(app);DestroyWindow(window);}
++        if(benchmark) {result=frameMode?frameProfile(app,std::wstring(commandLine).find(L"--exercise-switch")!=std::wstring::npos):replayMode?replay(app):huntMode?hunt(app):profileMode?profile(app):cornersMode?corners(app):gapsMode?gaps(app):regressionMode?regression(app):galleryMode?gallery(app):validateNative(app);DestroyWindow(window);}
+         else {
+             app.enableFlightDiagnostics();
+             std::ofstream adapterLog(app.directory/L"last-run.txt");adapterLog<<"Direct3D 11 hardware adapter: "<<utf8(app.renderer.adapterName)<<"\n";adapterLog.flush();

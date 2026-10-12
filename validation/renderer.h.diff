@@ -1,0 +1,59 @@
+--- before/src/renderer.h
++++ src/renderer.h
+@@ -43,7 +43,23 @@
+     std::array<ComPtr<ID3D11PixelShader>,3> vaultShaders;
+     std::array<ComPtr<ID3D11PixelShader>,3> gapStatus,gapColor;
+     ComPtr<ID3D11PixelShader> gapDepth;
+-    std::array<ComPtr<ID3D11PixelShader>,5> profileShaders;
++    std::array<ComPtr<ID3D11PixelShader>,3> profileShaders;
++    std::array<ComPtr<ID3D11ComputeShader>,3> rayBegin,rayContinue,rayFinish;
++    std::array<ComPtr<ID3D11PixelShader>,3> rayResolve;
++    ComPtr<ID3D11ComputeShader> rayPrepare;
++    ComPtr<ID3D11PixelShader> rayStatusShader;
++    bool compactActive=false,lastCompacted=false,currentCitadel=true;
++    uint64_t compactSince=0;
++    int tracePath=-1;
++    ComPtr<ID3D11Texture2D> rayTexture;
++    ComPtr<ID3D11UnorderedAccessView> rayTarget,dispatchUav,rayCountUav;
++    ComPtr<ID3D11ShaderResourceView> rayView,dispatchView;
++    ComPtr<ID3D11Buffer> dispatchBuffer,rayCountBuffer;
++    std::array<ComPtr<ID3D11Buffer>,2> rayQueues;
++    std::array<ComPtr<ID3D11ShaderResourceView>,2> rayQueueViews;
++    std::array<ComPtr<ID3D11UnorderedAccessView>,2> rayQueueTargets;
++    int rayWidth=0,rayHeight=0,raySamples=0;
++    static constexpr int rayChunk=64;
+     ComPtr<ID3D11SamplerState> sampler;
+     ComPtr<ID3D11RasterizerState> rasterizer;
+     ComPtr<ID2D1Factory> d2dFactory;
+@@ -51,7 +67,7 @@
+     ComPtr<ID2D1RenderTarget> overlay;
+     ComPtr<ID2D1SolidColorBrush> brush;
+     std::array<ComPtr<IDWriteTextFormat>,3> fonts;
+-    struct Timer {ComPtr<ID3D11Query> disjoint,start,end;bool pending=false;uint64_t serial=0;};
++    struct Timer {ComPtr<ID3D11Query> disjoint,start,end;bool pending=false,compacted=false,citadel=false;uint64_t serial=0;};
+     std::array<Timer,gpuTimingSlots> timers;
+     int timerCursor=0;
+     int width=0,height=0,renderWidth=0,renderHeight=0,quality=1;
+@@ -63,9 +79,12 @@
+     void makeSceneTarget(int w,int h);
+     void setConstants(const World&,const View&,int palette);
+     void scenePass(ID3D11PixelShader*,ID3D11RenderTargetView* target=nullptr);
++    void prepareWaveShaders(int profile);
++    void prepareWaveTargets(int profile);
++    void wavefrontPass(int profile);
+     void upscaleScene();
+     void collectTimings();
+-    double measure(ID3D11PixelShader*,const World&,const View&,int frames);
++    double measure(ID3D11PixelShader*,const World&,const View&,int frames,int waveProfile=-1);
+ public:
+     std::wstring adapterName;
+     std::function<void(uint64_t,double)> onGpuTiming;
+@@ -75,6 +94,8 @@
+     ~Renderer() {if(frameReady) CloseHandle(frameReady);}
+     void initialize(HWND,int,int,bool paced=true);
+     bool waitForFrame();
++    void setTracePath(int path) {tracePath=path;compactActive=false;}
++    bool usedCompaction() const {return lastCompacted;}
+     bool hasFramePacing() const {return frameReady!=nullptr;}
+     void resize(int,int);
+     void setQuality(int);

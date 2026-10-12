@@ -1,0 +1,242 @@
+--- before/src/renderer.cpp
++++ src/renderer.cpp
+@@ -108,6 +108,7 @@
+     const float sizes[]={13,16,27};
+     for(int i=0;i<3;i++) check(writeFactory->CreateTextFormat(L"Segoe UI",nullptr,i==2?DWRITE_FONT_WEIGHT_SEMI_BOLD:DWRITE_FONT_WEIGHT_NORMAL,
+         DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,sizes[i],L"en-us",&fonts[i]),"Create font");
++    for(int i=0;i<2;i++) prepareWaveShaders(i);
+     timerReady=true;
+     for(auto& timer:timers) {
+         D3D11_QUERY_DESC q{D3D11_QUERY_TIMESTAMP_DISJOINT,0};
+@@ -150,15 +151,18 @@
+     check(device->CreateTexture2D(&d,nullptr,&sceneTexture),"Create fractal render texture");
+     check(device->CreateRenderTargetView(sceneTexture.Get(),nullptr,&sceneTarget),"Create fractal render target");
+     check(device->CreateShaderResourceView(sceneTexture.Get(),nullptr,&sceneView),"Create fractal texture view");
+-    renderWidth=w;renderHeight=h;
++    renderWidth=w;renderHeight=h;compactActive=false;
++    prepareWaveTargets(quality);
+ }
+ void Renderer::setQuality(int q) {
+     quality=std::clamp(q,0,2);gpuMs=latestGpuMs=0;newestGpuSerial=frameSerial;
+     resolutionScale=std::min(1.,std::sqrt(profiles[quality].pixels/(double(width)*height)));
+     makeSceneTarget(int(width*resolutionScale),int(height*resolutionScale));
++    prepareWaveTargets(quality);compactActive=false;
+ }
+ static Float4 asFloat(Vec3 v) {return {float(v.x),float(v.y),float(v.z),0};}
+ void Renderer::setConstants(const World& world,const View& view,int palette) {
++    currentCitadel=world.kind==1;
+     Constants data{};
+     data.render={float(renderWidth),float(renderHeight),float(world.worldScale),float(world.level%1000)};
+     data.right=asFloat(view.right());data.up=asFloat(view.up());data.forward=asFloat(view.forward());
+@@ -183,6 +187,93 @@
+     D3D11_VIEWPORT vp{0,0,float(renderWidth),float(renderHeight),0,1};context->RSSetViewports(1,&vp);
+     ID3D11RenderTargetView* target=output?output:sceneTarget.Get();context->OMSetRenderTargets(1,&target,nullptr);
+     context->Draw(3,0);
++}
++void Renderer::prepareWaveShaders(int profile) {
++    if(!rayBegin[profile]) {
++        std::string shadows=std::to_string(profiles[profile].shadows),ao=std::to_string(profiles[profile].ao),chunk=std::to_string(rayChunk);
++        D3D_SHADER_MACRO macros[]={{"SHADOW_STEPS",shadows.c_str()},{"AO_STEPS",ao.c_str()},{"PIXEL_SAMPLES","1"},{"RAY_CHUNK",chunk.c_str()},{"WORLD_KIND","1"},{nullptr,nullptr}};
++        auto first=compileShader("beginRays","cs_5_0",macros),resolve=compileShader("resolveRays","ps_5_0",macros);
++        macros[3].Definition="256";auto next=compileShader("continueRays","cs_5_0",macros);
++        macros[3].Definition="8192";auto finish=compileShader("continueRays","cs_5_0",macros);
++        check(device->CreateComputeShader(finish->GetBufferPointer(),finish->GetBufferSize(),nullptr,&rayFinish[profile]),"Create final ray batch");
++        check(device->CreateComputeShader(first->GetBufferPointer(),first->GetBufferSize(),nullptr,&rayBegin[profile]),"Create first ray batch");
++        check(device->CreateComputeShader(next->GetBufferPointer(),next->GetBufferSize(),nullptr,&rayContinue[profile]),"Create continuation ray batch");
++        check(device->CreatePixelShader(resolve->GetBufferPointer(),resolve->GetBufferSize(),nullptr,&rayResolve[profile]),"Create ray sample resolver");
++        if(!rayPrepare) {
++            auto status=compileShader("resolveRayStatus","ps_5_0",macros);
++            check(device->CreatePixelShader(status->GetBufferPointer(),status->GetBufferSize(),nullptr,&rayStatusShader),"Create ray visibility resolver");
++            auto prep=compileShader("prepareRays","cs_5_0",macros);
++            check(device->CreateComputeShader(prep->GetBufferPointer(),prep->GetBufferSize(),nullptr,&rayPrepare),"Create indirect ray dispatcher");
++            D3D11_BUFFER_DESC d{};d.ByteWidth=16;d.Usage=D3D11_USAGE_DEFAULT;d.BindFlags=D3D11_BIND_UNORDERED_ACCESS|D3D11_BIND_SHADER_RESOURCE;d.MiscFlags=D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
++            check(device->CreateBuffer(&d,nullptr,&dispatchBuffer),"Create ray dispatch arguments");
++            D3D11_UNORDERED_ACCESS_VIEW_DESC u{};u.Format=DXGI_FORMAT_R32_UINT;u.ViewDimension=D3D11_UAV_DIMENSION_BUFFER;u.Buffer.NumElements=4;
++            check(device->CreateUnorderedAccessView(dispatchBuffer.Get(),&u,&dispatchUav),"Create writable dispatch arguments");
++            D3D11_SHADER_RESOURCE_VIEW_DESC s{};s.Format=DXGI_FORMAT_R32_UINT;s.ViewDimension=D3D11_SRV_DIMENSION_BUFFER;s.Buffer.NumElements=4;
++            check(device->CreateShaderResourceView(dispatchBuffer.Get(),&s,&dispatchView),"Create readable dispatch arguments");
++            d.ByteWidth=4;d.MiscFlags=0;u.Buffer.NumElements=1;
++            check(device->CreateBuffer(&d,nullptr,&rayCountBuffer),"Create ray counter");
++            check(device->CreateUnorderedAccessView(rayCountBuffer.Get(),&u,&rayCountUav),"Create writable ray counter");
++        }
++    }
++}
++void Renderer::prepareWaveTargets(int profile) {
++    // Ultra keeps its original two-sample shader. Its inlined compiler arithmetic
++    // differs slightly from split tracing; do not introduce a colour switch.
++    if(profile==2) {
++        rayTarget.Reset();rayView.Reset();rayTexture.Reset();
++        for(int i=0;i<2;i++) {rayQueueViews[i].Reset();rayQueueTargets[i].Reset();rayQueues[i].Reset();}
++        rayWidth=rayHeight=raySamples=0;return;
++    }
++    constexpr int samples=1;
++    if(rayWidth!=renderWidth || rayHeight!=renderHeight || raySamples!=samples) {
++        rayTarget.Reset();rayView.Reset();rayTexture.Reset();
++        D3D11_TEXTURE2D_DESC d{};d.Width=renderWidth;d.Height=renderHeight;d.MipLevels=1;d.ArraySize=samples;d.SampleDesc.Count=1;
++        d.Format=DXGI_FORMAT_R32G32_FLOAT;d.Usage=D3D11_USAGE_DEFAULT;d.BindFlags=D3D11_BIND_SHADER_RESOURCE|D3D11_BIND_UNORDERED_ACCESS;
++        check(device->CreateTexture2D(&d,nullptr,&rayTexture),"Create ray sample texture");
++        D3D11_UNORDERED_ACCESS_VIEW_DESC u{};u.Format=d.Format;u.ViewDimension=D3D11_UAV_DIMENSION_TEXTURE2DARRAY;u.Texture2DArray.ArraySize=samples;
++        check(device->CreateUnorderedAccessView(rayTexture.Get(),&u,&rayTarget),"Create ray sample target");
++        D3D11_SHADER_RESOURCE_VIEW_DESC s{};s.Format=d.Format;s.ViewDimension=D3D11_SRV_DIMENSION_TEXTURE2DARRAY;s.Texture2DArray.MipLevels=1;s.Texture2DArray.ArraySize=samples;
++        check(device->CreateShaderResourceView(rayTexture.Get(),&s,&rayView),"Create ray sample view");
++        UINT capacity=UINT(renderWidth*renderHeight*samples);
++        for(int i=0;i<2;i++) {
++            rayQueueViews[i].Reset();rayQueueTargets[i].Reset();rayQueues[i].Reset();
++            D3D11_BUFFER_DESC b{};b.ByteWidth=capacity*48;b.StructureByteStride=48;b.Usage=D3D11_USAGE_DEFAULT;
++            b.BindFlags=D3D11_BIND_SHADER_RESOURCE|D3D11_BIND_UNORDERED_ACCESS;b.MiscFlags=D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
++            check(device->CreateBuffer(&b,nullptr,&rayQueues[i]),"Create compact ray queue");
++            D3D11_UNORDERED_ACCESS_VIEW_DESC target{};target.ViewDimension=D3D11_UAV_DIMENSION_BUFFER;target.Buffer.NumElements=capacity;
++            check(device->CreateUnorderedAccessView(rayQueues[i].Get(),&target,&rayQueueTargets[i]),"Create append ray queue");
++            check(device->CreateShaderResourceView(rayQueues[i].Get(),nullptr,&rayQueueViews[i]),"Create ray queue view");
++        }
++        rayWidth=renderWidth;rayHeight=renderHeight;raySamples=samples;
++    }
++}
++void Renderer::wavefrontPass(int profile) {
++    // No CPU queue readback: the GPU compacts jobs and builds indirect dispatch
++    // arguments. Queue capacity covers every pixel, including all-survivor views.
++    ID3D11ShaderResourceView* noViews[4]{};ID3D11UnorderedAccessView* noTargets[4]{};
++    context->PSSetShaderResources(0,4,noViews);context->OMSetRenderTargets(0,nullptr,nullptr);
++    prepareWaveTargets(profile);constexpr int samples=1;
++    ID3D11Buffer* buffer=constants.Get();context->CSSetConstantBuffers(0,1,&buffer);
++    ID3D11UnorderedAccessView* outputs[]={rayTarget.Get(),rayQueueTargets[0].Get(),nullptr,rayCountUav.Get()};UINT zeros[4]{};
++    context->ClearUnorderedAccessViewUint(rayCountUav.Get(),zeros);
++    context->CSSetUnorderedAccessViews(0,4,outputs,nullptr);context->CSSetShader(rayBegin[profile].Get(),nullptr,0);
++    context->Dispatch((renderWidth+7)/8,(renderHeight+7)/8,samples);
++    context->CSSetUnorderedAccessViews(0,4,noTargets,nullptr);
++    for(int batch=1;batch<3;batch++) {
++        int read=(batch-1)%2,write=batch%2;
++        context->CopySubresourceRegion(dispatchBuffer.Get(),0,12,0,0,rayCountBuffer.Get(),0,nullptr);
++        auto arguments=dispatchUav.Get();context->CSSetUnorderedAccessViews(2,1,&arguments,nullptr);
++        context->CSSetShader(rayPrepare.Get(),nullptr,0);context->Dispatch(1,1,1);
++        context->CSSetUnorderedAccessViews(2,1,noTargets,nullptr);
++        ID3D11ShaderResourceView* inputs[]={rayQueueViews[read].Get(),dispatchView.Get()};
++        context->CSSetShaderResources(1,2,inputs);outputs[1]=rayQueueTargets[write].Get();
++        context->ClearUnorderedAccessViewUint(rayCountUav.Get(),zeros);
++        context->CSSetUnorderedAccessViews(0,4,outputs,nullptr);context->CSSetShader((batch==2?rayFinish:rayContinue)[profile].Get(),nullptr,0);
++        context->DispatchIndirect(dispatchBuffer.Get(),0);
++        context->CSSetShaderResources(1,2,noViews);context->CSSetUnorderedAccessViews(0,4,noTargets,nullptr);
++    }
++    context->CSSetShader(nullptr,nullptr,0);
++    auto result=rayView.Get();context->PSSetShaderResources(3,1,&result);scenePass(rayResolve[profile].Get());context->PSSetShaderResources(3,1,noViews);
+ }
+ void Renderer::collectTimings() {
+     if(timerReady) for(auto& timer:timers) {
+@@ -197,6 +288,12 @@
+             double sample=double(end-start)*1000/disjoint.Frequency;
+             if(sample>0 && std::isfinite(sample) && onGpuTiming) onGpuTiming(timer.serial,sample);
+             if(sample>0 && std::isfinite(sample) && timer.serial>newestGpuSerial) {
++                if(currentCitadel && quality<2 && timer.citadel && tracePath<0 && timer.compacted==compactActive) {
++                    // Easy views are cheaper in one pass. Wide hysteresis and a
++                    // minimum residency avoid repeatedly switching at a corner.
++                    if(!compactActive && sample>18) {compactActive=true;compactSince=frameSerial;}
++                    else if(compactActive && sample<7 && frameSerial>=compactSince+60) compactActive=false;
++                }
+                 latestGpuMs=sample;
+                 gpuMs=gpuMs==0?sample:gpuMs*.85+sample*.15;
+                 newestGpuSerial=timer.serial;
+@@ -206,12 +303,14 @@
+ }
+ void Renderer::render(const World& world,const View& view,int palette,bool timed) {
+     setConstants(world,view,palette);collectTimings();
++    bool compact=world.kind==1 && quality<2 && (tracePath>0 || (tracePath<0 && compactActive));
++    lastCompacted=compact;
+     Timer* timer=nullptr;
+     if(timed && timerReady && !timers[timerCursor].pending) {
+-        timer=&timers[timerCursor];timer->serial=++frameSerial;
++        timer=&timers[timerCursor];timer->serial=++frameSerial;timer->compacted=compact;timer->citadel=world.kind==1;
+         context->Begin(timer->disjoint.Get());context->End(timer->start.Get());
+     }
+-    scenePass((world.kind==1?shaders:vaultShaders)[quality].Get());
++    if(compact) wavefrontPass(quality);else scenePass((world.kind==1?shaders:vaultShaders)[quality].Get());
+     upscaleScene();
+     if(timer) {context->End(timer->end.Get());context->End(timer->disjoint.Get());timer->pending=true;timerCursor=(timerCursor+1)%int(timers.size());}
+ }
+@@ -372,32 +471,42 @@
+         for(size_t i=3;i<data.size();i+=4) unfinished+=data[i]<128;
+         passed=passed && !unfinished;
+         report<<"profile "<<profile<<": unfinished "<<unfinished<<'\n';
++        if(profile==2) {report<<"profile 2: original two-sample renderer retained\n";continue;}
++        wavefrontPass(profile);auto compacted=pixels();size_t compactUnfinished=0,changedPixels=0;
++        int maxDifference=0;
++        for(size_t i=0;i<data.size();i+=4) {
++            compactUnfinished+=compacted[i+3]<128;int difference=0;
++            for(int c=0;c<3;c++) difference=std::max(difference,std::abs(int(data[i+c])-int(compacted[i+c])));
++            maxDifference=std::max(maxDifference,difference);changedPixels+=difference>1;
++        }
++        passed=passed && !compactUnfinished && !changedPixels;
++        report<<"compacted_profile "<<profile<<": unfinished "<<compactUnfinished<<" max_channel_difference "<<maxDifference
++            <<" pixels_over_one_level "<<changedPixels<<'\n';
++
+     }
+     report<<"passed "<<passed<<'\n';return passed;
+ }
+ double Renderer::profileView(const World& world,const View& view,const std::wstring& prefix,bool captureImages) {
+     if(!profileShaders[0]) {
+-        profileShaders[0]=compilePixel(traceLimit,4,3,true,0,true,true,true,true,false,-1);
+-        profileShaders[1]=compilePixel(traceLimit,4,3,true,0,true,true);
+-        profileShaders[2]=compilePixel(traceLimit,4,3,true,3,true,true);
+-        profileShaders[3]=compilePixel(traceLimit,4,3,true,2,true,true,true,true,false,-1);
+-        profileShaders[4]=compilePixel(traceLimit,4,3,true,2,true,true);
+-    }
+-    auto baseline=profileShaders[0],optimized=profileShaders[1];
++        profileShaders[0]=compilePixel(traceLimit,4,3,true,0,true,true,true,true,true,1);
++        profileShaders[1]=compilePixel(traceLimit,4,3,true,3);
++        profileShaders[2]=compilePixel(traceLimit,4,3,true,2);
++    }
++    auto baseline=profileShaders[0];
+     setConstants(world,view,0);scenePass(baseline.Get());auto before=pixels();if(captureImages) {upscaleScene();capture(prefix+L"-before.png");}
+-    scenePass(optimized.Get());auto after=pixels();if(captureImages) {upscaleScene();capture(prefix+L"-after.png");}
++    wavefrontPass(1);auto after=pixels();if(captureImages) {upscaleScene();capture(prefix+L"-after.png");}
+     double error=0;size_t different=0,unfinished=0;int maximum=0;
+     for(size_t i=0;i<after.size();i+=4) {
+         int e=0;for(int c=0;c<3;c++) e=std::max(e,std::abs(int(before[i+c])-int(after[i+c])));
+         error+=e;maximum=std::max(maximum,e);different+=e>16;unfinished+=after[i+3]<128;
+     }
+-    double oldMs=measure(baseline.Get(),world,view,12),newMs=measure(optimized.Get(),world,view,12);
++    double oldMs=measure(baseline.Get(),world,view,12),newMs=measure(nullptr,world,view,12,1);
+     D3D11_TEXTURE2D_DESC d{};d.Width=renderWidth;d.Height=renderHeight;d.MipLevels=d.ArraySize=d.SampleDesc.Count=1;
+     d.Format=DXGI_FORMAT_R32G32B32A32_FLOAT;d.Usage=D3D11_USAGE_DEFAULT;d.BindFlags=D3D11_BIND_RENDER_TARGET;
+     ComPtr<ID3D11Texture2D> target,readback;ComPtr<ID3D11RenderTargetView> targetView;
+     check(device->CreateTexture2D(&d,nullptr,&target),"Create profiling target");
+     check(device->CreateRenderTargetView(target.Get(),nullptr,&targetView),"Create profiling view");
+-    scenePass(profileShaders[2].Get(),targetView.Get());
++    scenePass(profileShaders[1].Get(),targetView.Get());
+     d.Usage=D3D11_USAGE_STAGING;d.BindFlags=0;d.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+     check(device->CreateTexture2D(&d,nullptr,&readback),"Create profiling readback");context->CopyResource(readback.Get(),target.Get());
+     D3D11_MAPPED_SUBRESOURCE m{};check(context->Map(readback.Get(),0,D3D11_MAP_READ,0,&m),"Read profiling counts");
+@@ -417,7 +526,10 @@
+         }
+         context->Unmap(readback.Get(),0);return status;
+     };
+-    auto oldStatus=rayStatus(profileShaders[3].Get()),newStatus=rayStatus(profileShaders[4].Get());
++    auto oldStatus=rayStatus(profileShaders[2].Get());
++    wavefrontPass(1);auto depthView=rayView.Get();context->PSSetShaderResources(3,1,&depthView);
++    auto newStatus=rayStatus(rayStatusShader.Get());
++    ID3D11ShaderResourceView* noDepth=nullptr;context->PSSetShaderResources(3,1,&noDepth);
+     size_t lostHits=0,newHits=0;
+     for(size_t i=0;i<oldStatus.size();i++) {lostHits+=oldStatus[i]>0 && newStatus[i]==0;newHits+=oldStatus[i]==0 && newStatus[i]>0;}
+     std::ofstream report(std::filesystem::path(prefix+L".json"));
+@@ -426,17 +538,19 @@
+         <<",\"max_channel_error\":"<<maximum<<",\"changed_over_16\":"<<different<<",\"unfinished\":"<<unfinished
+         <<",\"mean_steps\":"<<totalSteps/(renderWidth*renderHeight)<<",\"mean_iterations\":"<<totalIterations/(renderWidth*renderHeight)
+         <<",\"rays_over_1000\":"<<slow<<",\"max_steps\":"<<maxSteps<<",\"lost_surface_rays\":"<<lostHits<<",\"new_surface_rays\":"<<newHits<<"}\n";
++    if(maximum || unfinished || lostHits || newHits)
++        throw std::runtime_error("Compacted Citadel image or visibility differs; see profiling report");
+     return oldMs;
+ }
+-double Renderer::measure(ID3D11PixelShader* shader,const World& world,const View& view,int frames) {
++double Renderer::measure(ID3D11PixelShader* shader,const World& world,const View& view,int frames,int waveProfile) {
+     if(!timerReady) throw std::runtime_error("GPU timestamp queries unavailable");
+     setConstants(world,view,0);
+-    for(int i=0;i<(frames==1?0:4);i++) scenePass(shader);
++    for(int i=0;i<(frames==1?0:4);i++) {if(waveProfile>=0) wavefrontPass(waveProfile);else scenePass(shader);}
+     Timer timer;D3D11_QUERY_DESC desc{D3D11_QUERY_TIMESTAMP_DISJOINT,0};
+     check(device->CreateQuery(&desc,&timer.disjoint),"Create benchmark timer");desc.Query=D3D11_QUERY_TIMESTAMP;
+     check(device->CreateQuery(&desc,&timer.start),"Create start timestamp");check(device->CreateQuery(&desc,&timer.end),"Create end timestamp");
+     context->Begin(timer.disjoint.Get());context->End(timer.start.Get());
+-    for(int i=0;i<frames;i++) scenePass(shader);
++    for(int i=0;i<frames;i++) {if(waveProfile>=0) wavefrontPass(waveProfile);else scenePass(shader);}
+     context->End(timer.end.Get());context->End(timer.disjoint.Get());context->Flush();
+     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(30);
+     D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};

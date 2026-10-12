@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(ShaderMetrics LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+add_executable(ShaderMetrics metrics.cpp)
+target_compile_definitions(ShaderMetrics PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_link_libraries(ShaderMetrics PRIVATE d3dcompiler)

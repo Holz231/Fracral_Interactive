@@ -1,0 +1,78 @@
+#pragma once
+#include "world.h"
+#include <windows.h>
+#include <d3d11.h>
+#include <dxgi1_6.h>
+#include <d2d1.h>
+#include <dwrite.h>
+#include <wrl/client.h>
+#include <string>
+#include <functional>
+
+namespace aurora {
+using Microsoft::WRL::ComPtr;
+inline void check(HRESULT hr,const char* operation) {if(FAILED(hr)) throw std::runtime_error(std::string(operation)+" failed ("+std::to_string(static_cast<unsigned>(hr))+")");}
+struct Profile {const wchar_t* name;int steps,shadows,ao;double pixels;};
+inline constexpr Profile profiles[]={{L"Performance",160,0,2,1000000},{L"Balanced",224,4,3,2100000},{L"Ultra",320,8,4,5000000}};
+struct alignas(16) Constants {
+    Float4 render,right,up,forward;
+    std::array<int,4> counts{};
+    Float4 fractalParameters;
+    Float4 rootCamera;
+    Float4 rootRight,rootUp,rootForward;
+    std::array<Float4,18> orbit,octaves;
+    std::array<Float4,48> parents,parentMeta;
+};
+class Renderer {
+    HWND window=nullptr;
+    ComPtr<ID3D11Device> device;
+    ComPtr<ID3D11DeviceContext> context;
+    ComPtr<IDXGISwapChain1> swap;
+    ComPtr<ID3D11Texture2D> backBuffer,sceneTexture;
+    ComPtr<ID3D11RenderTargetView> backTarget,sceneTarget;
+    ComPtr<ID3D11ShaderResourceView> sceneView;
+    ComPtr<ID3D11Buffer> constants;
+    ComPtr<ID3D11VertexShader> vertex;
+    ComPtr<ID3D11PixelShader> presentShader;
+    std::array<ComPtr<ID3D11PixelShader>,3> shaders;
+    ComPtr<ID3D11SamplerState> sampler;
+    ComPtr<ID3D11RasterizerState> rasterizer;
+    ComPtr<ID2D1Factory> d2dFactory;
+    ComPtr<IDWriteFactory> writeFactory;
+    ComPtr<ID2D1RenderTarget> overlay;
+    ComPtr<ID2D1SolidColorBrush> brush;
+    std::array<ComPtr<IDWriteTextFormat>,3> fonts;
+    struct Timer {ComPtr<ID3D11Query> disjoint,start,end;bool pending=false;};
+    std::array<Timer,6> timers;
+    int timerCursor=0;
+    int width=0,height=0,renderWidth=0,renderHeight=0,quality=1;
+    double resolutionScale=1,gpuMs=0,adjustElapsed=0;
+    bool timerReady=false;
+    ComPtr<ID3D11PixelShader> compilePixel(int steps,int shadows,int ao,bool fast);
+    void makeBackBuffer();
+    void makeSceneTarget(int w,int h);
+    void setConstants(const World&,const View&,int palette);
+    void scenePass(ID3D11PixelShader*);
+    double measure(ID3D11PixelShader*,const World&,const View&,int frames);
+public:
+    std::wstring adapterName;
+    void initialize(HWND,int,int);
+    void resize(int,int);
+    void setQuality(int);
+    bool adapt(double seconds);
+    void render(const World&,const View&,int palette,bool timed=true);
+    void present();
+    void beginOverlay(float scale=1);
+    void endOverlay();
+    void rect(float x,float y,float w,float h,D2D1_COLOR_F color,float radius=0);
+    void text(const std::wstring&,float x,float y,float w,float h,int font,D2D1_COLOR_F color);
+    void capture(const std::wstring& path);
+    std::pair<double,double> benchmark(const World&,const View&);
+    double profileMilliseconds(const World&,const View&,int profile);
+    int benchmarkMaxPixelDifference=0;
+    size_t benchmarkPixelsOverTolerance=0;
+    double milliseconds() const {return gpuMs;}
+    int sceneWidth() const {return renderWidth;}
+    int sceneHeight() const {return renderHeight;}
+};
+}

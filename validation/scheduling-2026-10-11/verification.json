@@ -1,0 +1,104 @@
+{
+  "views": [
+    {
+      "fixture": "slow-45ms-fixture",
+      "view": "saved-view",
+      "gpu_ms": 11.0813,
+      "unfinished": 0,
+      "exact": true
+    },
+    {
+      "fixture": "slow-45ms-fixture",
+      "view": "saved-native",
+      "gpu_ms": 18.3776,
+      "unfinished": 863,
+      "exact": true
+    },
+    {
+      "fixture": "slow-45ms-fixture",
+      "view": "approach-30",
+      "gpu_ms": 11.5384,
+      "unfinished": 0,
+      "exact": true
+    },
+    {
+      "fixture": "slow-45ms-fixture",
+      "view": "approach-60",
+      "gpu_ms": 12.0119,
+      "unfinished": 0,
+      "exact": true
+    },
+    {
+      "fixture": "slow-45ms-fixture",
+      "view": "approach-90",
+      "gpu_ms": 12.5819,
+      "unfinished": 3,
+      "exact": true
+    },
+    {
+      "fixture": "slow-45ms-fixture",
+      "view": "approach-120",
+      "gpu_ms": 8.90268,
+      "unfinished": 0,
+      "exact": true
+    },
+    {
+      "fixture": "slow-69ms-fixture",
+      "view": "saved-view",
+      "gpu_ms": 15.4056,
+      "unfinished": 5,
+      "exact": true
+    },
+    {
+      "fixture": "slow-69ms-fixture",
+      "view": "saved-native",
+      "gpu_ms": 30.8271,
+      "unfinished": 603,
+      "exact": true
+    },
+    {
+      "fixture": "slow-69ms-fixture",
+      "view": "approach-30",
+      "gpu_ms": 15.5671,
+      "unfinished": 8,
+      "exact": true
+    },
+    {
+      "fixture": "slow-69ms-fixture",
+      "view": "approach-60",
+      "gpu_ms": 14.6705,
+      "unfinished": 1,
+      "exact": true
+    },
+    {
+      "fixture": "slow-69ms-fixture",
+      "view": "approach-90",
+      "gpu_ms": 13.9848,
+      "unfinished": 1,
+      "exact": true
+    },
+    {
+      "fixture": "slow-69ms-fixture",
+      "view": "approach-120",
+      "gpu_ms": 13.8201,
+      "unfinished": 1,
+      "exact": true
+    }
+  ],
+  "csv_checks": [
+    {
+      "fixture": "slow-45ms-fixture",
+      "frames": 8,
+      "batches_per_frame": 33,
+      "passed": true
+    },
+    {
+      "fixture": "slow-69ms-fixture",
+      "frames": 8,
+      "batches_per_frame": 33,
+      "passed": true
+    }
+  ],
+  "shader_unchanged": true,
+  "exe_sha256": "D0298511DDAC9E605458A30770A53350A3917FFE8480340CF949153BD17E4C55"
+}

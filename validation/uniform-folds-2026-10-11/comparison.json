@@ -1,0 +1,37 @@
+[
+  {
+    "fixture": "interior-fixture",
+    "view": "Dense interior",
+    "previous_ms": 22.439,
+    "current_ms": 15.5003,
+    "reduction_percent": 30.922501002718484
+  },
+  {
+    "fixture": "slow-384ms-fixture",
+    "view": "Deep oblique view",
+    "previous_ms": 27.4066,
+    "current_ms": 17.911,
+    "reduction_percent": 34.64712879379419
+  },
+  {
+    "fixture": "slow-69ms-fixture",
+    "view": "Long grazing corridor",
+    "previous_ms": 43.8657,
+    "current_ms": 30.7159,
+    "reduction_percent": 29.977408316748612
+  },
+  {
+    "fixture": "slow-start-56ms-fixture",
+    "view": "Recently captured starting view",
+    "previous_ms": 5.23478,
+    "current_ms": 2.9841,
+    "reduction_percent": 42.9947390339231
+  },
+  {
+    "fixture": "stutter-fixture",
+    "view": "Fine corner detail",
+    "previous_ms": 10.8536,
+    "current_ms": 6.48666,
+    "reduction_percent": 40.2349450873443
+  }
+]

@@ -1,0 +1,20 @@
+resolution 1536x820
+224 steps: pending 348, hit 1259172, escaped 0
+gpu_ms 5.8141
+8192 steps: pending 0, hit 1259520, escaped 0
+gpu_ms 5.81214
+16384 steps: pending 0, hit 1259520, escaped 0
+gpu_ms 6.2249
+restored_surface_pixels 348
+changed_resolved_rays 0
+reference_difference 0
+verified_exterior_pixels 0
+completed_escape_rays 0
+profile 0: unfinished 0
+compacted_profile 0: unfinished 0 max_channel_difference 94 pixels_over_one_level 86
+profile 1: unfinished 0
+compacted_profile 1: unfinished 0 max_channel_difference 47 pixels_over_one_level 70
+profile 2: unfinished 0
+compacted_profile 2: unfinished 0 max_channel_difference 90 pixels_over_one_level 655
+paired_depth_differences 343789 max_error 5.57832 status_differences 0
+passed 0

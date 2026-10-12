@@ -1,0 +1,10 @@
+^C:\USERS\MARCE\DESKTOP\FRAKTALS-WEITER\BUILD-COPY\CMAKEFILES\B6E5AB2786953F09B443FBCD827A31A4\GENERATE.STAMP.RULE
+setlocal
+C:\Users\marce\AppData\Local\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.MSVCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin\cmake.exe -SC:/Users/marce/Desktop/Fraktals-Weiter -BC:/Users/marce/Desktop/Fraktals-Weiter/build-copy --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/AuroraFractal.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

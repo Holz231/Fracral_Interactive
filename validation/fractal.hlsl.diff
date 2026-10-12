@@ -1,0 +1,148 @@
+--- before/src/fractal.hlsl
++++ src/fractal.hlsl
+@@ -396,6 +396,145 @@
+     return samplePixel(input.position.xy);
+ }
+ Texture2D frameTexture:register(t0);
++// Split long Citadel traces into 64, then 256, then all remaining accepted
++// steps. Compact only surviving rays between batches; shade after tracing so
++// finished pixels do not keep lighting state alive behind long corridor rays.
++// The full step budget, conservative retries and surface refinements remain.
++#ifndef RAY_CHUNK
++#define RAY_CHUNK 64
++#endif
++struct RayJob {
++    uint index;float horizon,scale,t,previous,radius,relaxation;
++    int first,accepted;uint verify;float derivative,limit;
++};
++RWTexture2DArray<float2> rayOutput:register(u0);
++RWStructuredBuffer<RayJob> nextRays:register(u1);
++RWBuffer<uint> dispatchOutput:register(u2);
++RWBuffer<uint> rayCount:register(u3);
++StructuredBuffer<RayJob> activeRays:register(t1);
++Buffer<uint> dispatchInput:register(t2);
++Texture2DArray<float2> rayImage:register(t3);
++uint3 rayPixel(uint index) {
++    uint w=uint(renderInfo.x),h=uint(renderInfo.y);
++    return uint3(index%w,(index/w)%h,index/(w*h));
++}
++float3 rayDirection(uint3 position) {
++    float2 uv=((float2(position.xy)+.5)*2-renderInfo.xy)/renderInfo.y;uv.y=-uv.y;
++    return normalize(viewRight.xyz*uv.x+viewUp.xyz*uv.y+viewForward.xyz*1.85);
++}
++bool initializeJob(inout RayJob job,float3 rd) {
++    float pixel=1.0/(renderInfo.y*1.85),start=-7;
++    float3 origin=reference[0].p.xyz;float along=dot(origin,rd);
++    float3 closest=origin-rd*along;
++    float halfChord=sqrt(max(0,64-dot(closest,closest))),exitDistance=-along+halfChord;
++    if(exitDistance<=0 || dot(closest,closest)>64) return false;
++    job.horizon=log2(exitDistance)-reference[0].p.w;
++    float entry=-along-halfChord;if(entry>0) start=max(start,log2(entry)-reference[0].p.w);
++    if(!clipBounds(rd,job.horizon)) return false;
++    job.horizon+=max(1e-4,2*pixel);
++    job.scale=floor(start);job.t=exp2(start-job.scale);job.previous=job.t;job.relaxation=.9;
++    job.first=citadelStart(start);RayPrefix prefix=rayPrefix(rd,job.first,job.scale);
++    job.derivative=prefix.derivative;job.limit=prefix.limit;return true;
++}
++bool marchJob(inout RayJob job,float3 rd,uint3 position) {
++    float pixel=1.0/(renderInfo.y*1.85);
++    float scale=job.scale,t=job.t,previous=job.previous,radius=job.radius,relaxation=job.relaxation;
++    int first=job.first,accepted=job.accepted,end=min(MARCH_STEPS,accepted+RAY_CHUNK);
++    bool verify=job.verify!=0,hit=false,escaped=false;
++    RayPrefix prefix=rayPrefix(rd,first,scale);
++    // Preserve the exact rebased float values across dispatches. Recomputing
++    // these from logarithms introduces colour/depth changes at chunk borders.
++    prefix.derivative=job.derivative;prefix.limit=job.limit;
++    float exitT=exp2(min(job.horizon-scale,24));
++    [loop] for(;accepted<end;accepted++) {
++        if(t>4096) {
++            scale+=12;t/=4096;previous/=4096;prefix.derivative*=4096;prefix.limit/=4096;
++            exitT=exp2(min(job.horizon-scale,24));
++        }
++        if(first>0 && t>=prefix.limit) {
++            [loop] do {first--;} while(first>0 && t>=exp2(min(prefixLimit(first)-scale,100)));
++            prefix=rayPrefix(rd,first,scale);
++        }
++        float ratio=citadelDistanceScaled(prefix.basis,prefix.origin,prefix.pole,prefix.derivative*t,first);
++        if(verify) {
++            float relative=t/previous;
++            if(radius+ratio*relative<(relative-1)*1.00001) {
++                t=previous*(1+max(radius*.9,1e-7));relaxation=1;verify=false;accepted--;continue;
++            }
++            if(t>exitT) {escaped=true;break;}
++        }
++        if(ratio<pixel*.65) {
++            float lower=previous,upper=t;
++            [loop] for(int refine=0;refine<3;refine++) {
++                float middle=(lower+upper)*.5;
++                float d=citadelDistanceScaled(prefix.basis,prefix.origin,prefix.pole,prefix.derivative*middle,first);
++                if(d<pixel*.65) upper=middle;else lower=middle;
++            }
++            t=upper;hit=true;break;
++        }
++        if(radius>0 && t>previous) {
++            float relative=t/previous;
++            float slope=(radius-ratio*relative)/max(relative-1,1e-7);
++            relaxation=clamp(1.85/(1+max(0,slope)),.9,1.85);
++        }
++        previous=t;radius=ratio;t*=1+max(ratio*relaxation,1e-7);verify=relaxation>1;
++        if(!verify && t>exitT) {escaped=true;break;}
++    }
++    if(hit || escaped || accepted>=MARCH_STEPS) {
++        rayOutput[position]=float2(log2(t)+scale,hit?1:escaped?0:-1);return false;
++    }
++    job.scale=scale;job.t=t;job.previous=previous;job.radius=radius;job.relaxation=relaxation;
++    job.first=first;job.accepted=accepted;job.verify=verify;job.derivative=prefix.derivative;job.limit=prefix.limit;
++    return true;
++}
++groupshared uint pendingCount,pendingBase;
++groupshared RayJob pendingRays[64];
++void enqueueGroup(uint lane,bool pending,RayJob job) {
++    if(lane==0) pendingCount=0;
++    GroupMemoryBarrierWithGroupSync();
++    if(pending) {uint slot;InterlockedAdd(pendingCount,1,slot);pendingRays[slot]=job;}
++    GroupMemoryBarrierWithGroupSync();
++    if(lane==0) InterlockedAdd(rayCount[0],pendingCount,pendingBase);
++    GroupMemoryBarrierWithGroupSync();
++    if(lane<pendingCount) nextRays[pendingBase+lane]=pendingRays[lane];
++}
++[numthreads(8,8,1)]
++void beginRays(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex) {
++    RayJob job=(RayJob)0;bool pending=false;
++    if(id.x<uint(renderInfo.x) && id.y<uint(renderInfo.y)) {
++        float3 rd=rayDirection(id);job.index=id.x+uint(renderInfo.x)*(id.y+uint(renderInfo.y)*id.z);
++        if(initializeJob(job,rd)) pending=marchJob(job,rd,id);
++        else rayOutput[id]=float2(0,0);
++    }
++    enqueueGroup(lane,pending,job);
++}
++[numthreads(64,1,1)]
++void continueRays(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex) {
++    uint index=id.x+id.y*(65535*64);RayJob job=(RayJob)0;bool pending=false;
++    if(index<dispatchInput[3]) {
++        job=activeRays[index];uint3 position=rayPixel(job.index);
++        pending=marchJob(job,rayDirection(position),position);
++    }
++    #if RAY_CHUNK < MARCH_STEPS
++    enqueueGroup(lane,pending,job);
++    #endif
++}
++[numthreads(1,1,1)]
++void prepareRays(uint3 id:SV_DispatchThreadID) {
++    uint groups=(dispatchOutput[3]+63)/64;
++    dispatchOutput[0]=min(groups,65535);dispatchOutput[1]=max(1,(groups+65534)/65535);dispatchOutput[2]=1;
++}
++float4 shadeJob(uint3 p) {
++    float2 surface=rayImage.Load(int4(p,0));float3 rd=rayDirection(p);
++    return float4(finishColor(surface.y>0?shade(rd,surface.x,1.0/(renderInfo.y*1.85)):skyColor(rd)),surface.y>=0?1:0);
++}
++float4 resolveRays(VertexOut input):SV_Target {
++    uint2 p=uint2(input.position.xy);float4 a=shadeJob(uint3(p,0));
++    return a;
++}
++float4 resolveRayStatus(VertexOut input):SV_Target {
++    return float4(rayImage.Load(int4(int2(input.position.xy),0,0)),0,1);
++}
+ float4 probeMain(VertexOut input):SV_Target {
+     int i=int(input.position.x);
+     float3 offset=float3((i*13)%23-11,(i*7)%19-9,(i*17)%29-14)*.125;

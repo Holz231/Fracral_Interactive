@@ -1,0 +1,38 @@
+[
+  {
+    "fixture": "slow-69ms-fixture",
+    "frames": 600,
+    "mean_ms": 27.290895408163266,
+    "p95_ms": 30.6632,
+    "max_ms": 31.1816,
+    "over_16_7_percent": 100.0,
+    "all_compacted": true
+  },
+  {
+    "fixture": "interior-fixture",
+    "frames": 600,
+    "mean_ms": 13.200981632653061,
+    "p95_ms": 14.9074,
+    "max_ms": 15.7809,
+    "over_16_7_percent": 0.0,
+    "all_compacted": true
+  },
+  {
+    "fixture": "slow-384ms-fixture",
+    "frames": 600,
+    "mean_ms": 16.945032976190475,
+    "p95_ms": 19.6811,
+    "max_ms": 21.4641,
+    "over_16_7_percent": 75.85034013605443,
+    "all_compacted": true
+  },
+  {
+    "fixture": "slow-start-56ms-fixture",
+    "frames": 600,
+    "mean_ms": 4.098400350340136,
+    "p95_ms": 6.93146,
+    "max_ms": 7.65747,
+    "over_16_7_percent": 0.0,
+    "all_compacted": true
+  }
+]

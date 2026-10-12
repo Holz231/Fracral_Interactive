@@ -1,0 +1,130 @@
+[
+  {
+    "experiment": "uniform-compiler-o1",
+    "gpu_ms": 30.5681,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-cost-sort",
+    "gpu_ms": 34.2921,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-direct-enqueue",
+    "gpu_ms": 30.7283,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-fixed-prefix-loop",
+    "gpu_ms": 54.0896,
+    "max_channel_error": 3,
+    "status_changes": 0,
+    "hit_depth_changes": 167,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-group-128",
+    "gpu_ms": 30.8246,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-initial-256",
+    "gpu_ms": 53.5375,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-joint-cost-sort",
+    "gpu_ms": 925.101,
+    "max_channel_error": 168,
+    "status_changes": 3,
+    "hit_depth_changes": 4035,
+    "unfinished": 1
+  },
+  {
+    "experiment": "uniform-persistent-1",
+    "gpu_ms": 108.315,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-persistent-32",
+    "gpu_ms": 70.5303,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-prefix-boundary",
+    "gpu_ms": 46.2093,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-radius-sort-512",
+    "gpu_ms": 31.074,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-recomputed-prefix",
+    "gpu_ms": 30.4859,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-segment-current",
+    "gpu_ms": 32.5832,
+    "max_channel_error": 154,
+    "status_changes": 1,
+    "hit_depth_changes": 26342,
+    "unfinished": 602
+  },
+  {
+    "experiment": "uniform-separated-tail",
+    "gpu_ms": 31.7219,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-sparse-group-4",
+    "gpu_ms": 31.3083,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  },
+  {
+    "experiment": "uniform-twofold-loop",
+    "gpu_ms": 30.3657,
+    "max_channel_error": 0,
+    "status_changes": 0,
+    "hit_depth_changes": 0,
+    "unfinished": 603
+  }
+]

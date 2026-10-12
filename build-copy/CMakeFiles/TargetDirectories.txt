@@ -1,0 +1,7 @@
+C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/CMakeFiles/AuroraFractal.dir
+C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/CMakeFiles/FractalTests.dir
+C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/CMakeFiles/CitadelTests.dir
+C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/CMakeFiles/RUN_TESTS.dir
+C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/CMakeFiles/INSTALL.dir
+C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/CMakeFiles/ALL_BUILD.dir
+C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/CMakeFiles/ZERO_CHECK.dir

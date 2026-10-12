@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\marce\Desktop\Fraktals-Weiter\build-copy\CMakeFiles\b6e5ab2786953f09b443fbcd827a31a4\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{317141F8-08F4-327D-A473-09FFC6F96331}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
