@@ -50,6 +50,13 @@ Bewegung von 10.728 auf 787 Pixel pro Bild. Vergleich: `validation/images/taa-co
    und ruckelte eine Drittelsekunde lang. Standbilder in der Pause rechnet Ultra wie
    bisher mit voller Auflösung; der Start bei 55 % greift erst, wenn du weiterfliegst.
    Balanced, Performance und Ultra im Fenster bleiben unverändert.
+9. **Nachzügler-Strahlen früher parallel.** Lange Strahlen werden ab dem 8. Durchlauf
+   in 32 parallel geprüfte Abschnitte geteilt. Sind weniger als 16.384 Strahlen übrig,
+   geschieht das jetzt schon ab dem 2. Durchlauf; die GPU entscheidet das selbst.
+   Vorher rechneten dann nur noch wenige tausend Strahlen und ließen die GPU halb
+   leer. Das spart in den schweren Ansichten zusammen 1–5 % GPU-Zeit, in einzelnen
+   Ansichten bis 13 %, am meisten bei kleinerer Auflösung, also unter dem
+   Sicherheitsnetz.
 
 Gleich geblieben sind Geometrie, Julia-Konstante, Iterationsgrenzen, das Budget von
 8192 Schritten, Sichtweite, Beleuchtungsmodell und die Pixelgrenzen der Stufen
@@ -143,6 +150,21 @@ Gegenprobe im sichtbaren Fenster mit echten Tastendrücken (deine langsamste Auf
 Autopilot, je zwei Läufe): vorher nach K 15 und nach F 17 Bilder über 20 ms in der ersten
 Sekunde, jetzt 0.
 
+Nachzügler früher parallel (Punkt 9): reine GPU-Zeit, abwechselnd in drei Runden
+gemessen, jeweils der beste Wert, Summe der sechs schwersten Ansichten:
+
+| Einstellung | vorher | jetzt |
+|---|---:|---:|
+| Balanced, 1980 × 1058 | 67,1 ms | 65,7 ms (−2 %) |
+| Balanced im 4K-Vollbild | 68,1 ms | 65,7 ms (−4 %) |
+| Ultra mit 1638 × 922 (wie unter dem Sicherheitsnetz im 4K-Vollbild) | 56,2 ms | 53,4 ms (−5 %) |
+| Ultra 4K bei voller Auflösung | 148,4 ms | 147,4 ms (−1 %) |
+
+Im Flug mit echter Ausgabe bleibt es bei 60 FPS ohne Bild über 20 ms; das
+Sicherheitsnetz rechnet dafür etwas höher: Ultra im 4K-Vollbild in deiner langsamsten
+Preview-Aufnahme im Mittel 68 % statt 64 % pro Achse, in der langsamsten Aufnahme aus
+dem Hauptordner 60 % statt 59 %, Balanced im Fenster dort 97 % statt 95 %.
+
 Außerdem blieben im alten Ultra einzelne Strahlen nach 8192 Schritten unfertig und
 ergaben Fehlpixel: über die 14 Ansichten 3.904 Pixel bei 1980 × 1058 und 13.898 im
 4K-Vollbild. Im neuen Ultra sind es 0.
@@ -162,6 +184,11 @@ ergaben Fehlpixel: über die 14 Ansichten 3.904 Pixel bei 1980 × 1058 und 13.89
 - Nach dem Anlauf-Fix: Balanced und Ultra (1980 × 1058 und 4K, mit und ohne
   Kantenglättung) rendern auf allen 14 Ansichten pixelgleich wie vorher; `--benchmark`
   bestanden, `--regression` und `--field-regression` liefern dieselben Werte.
+- Nach Punkt 9: CTest 2/2; `--benchmark` bestanden, `--field-regression` unverändert,
+  `--regression` bestanden (ein Wert weicht in der sechsten Stelle ab). Die Bilder
+  weichen nur an sehr flach gesehenen Wänden in einzelnen Pixeln ab, über die 14
+  Ansichten im Mittel um weniger als 0,06 Helligkeitsstufen (mit Kantenglättung
+  0,03); unfertige Pixel weiterhin 0.
 
 ## Bekannte Grenzen
 

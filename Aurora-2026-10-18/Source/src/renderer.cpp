@@ -305,11 +305,11 @@ void Renderer::prepareWaveShaders(int profile) {
             check(device->CreateComputeShader(prep->GetBufferPointer(),prep->GetBufferSize(),nullptr,&rayPrepare),"Create indirect ray dispatcher");
             auto sort=compileShader("sortRays","cs_5_0",macros);
             check(device->CreateComputeShader(sort->GetBufferPointer(),sort->GetBufferSize(),nullptr,&raySort),"Create ray sorter");
-            D3D11_BUFFER_DESC d{};d.ByteWidth=32;d.Usage=D3D11_USAGE_DEFAULT;d.BindFlags=D3D11_BIND_UNORDERED_ACCESS|D3D11_BIND_SHADER_RESOURCE;d.MiscFlags=D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
+            D3D11_BUFFER_DESC d{};d.ByteWidth=64;d.Usage=D3D11_USAGE_DEFAULT;d.BindFlags=D3D11_BIND_UNORDERED_ACCESS|D3D11_BIND_SHADER_RESOURCE;d.MiscFlags=D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
             check(device->CreateBuffer(&d,nullptr,&dispatchBuffer),"Create ray dispatch arguments");
-            D3D11_UNORDERED_ACCESS_VIEW_DESC u{};u.Format=DXGI_FORMAT_R32_UINT;u.ViewDimension=D3D11_UAV_DIMENSION_BUFFER;u.Buffer.NumElements=8;
+            D3D11_UNORDERED_ACCESS_VIEW_DESC u{};u.Format=DXGI_FORMAT_R32_UINT;u.ViewDimension=D3D11_UAV_DIMENSION_BUFFER;u.Buffer.NumElements=16;
             check(device->CreateUnorderedAccessView(dispatchBuffer.Get(),&u,&dispatchUav),"Create writable dispatch arguments");
-            D3D11_SHADER_RESOURCE_VIEW_DESC s{};s.Format=DXGI_FORMAT_R32_UINT;s.ViewDimension=D3D11_SRV_DIMENSION_BUFFER;s.Buffer.NumElements=8;
+            D3D11_SHADER_RESOURCE_VIEW_DESC s{};s.Format=DXGI_FORMAT_R32_UINT;s.ViewDimension=D3D11_SRV_DIMENSION_BUFFER;s.Buffer.NumElements=16;
             check(device->CreateShaderResourceView(dispatchBuffer.Get(),&s,&dispatchView),"Create readable dispatch arguments");
             d.ByteWidth=4;d.MiscFlags=0;u.Buffer.NumElements=1;
             check(device->CreateBuffer(&d,nullptr,&rayCountBuffer),"Create ray counter");
@@ -403,8 +403,15 @@ void Renderer::wavefrontPass(int profile) {
         if(measureBatches) context->End(batchQueries[batch*2].Get());
         context->ClearUnorderedAccessViewUint(rayCountUav.Get(),zeros);
         context->ClearUnorderedAccessViewUint(bucketUav.Get(),zeros);
-        context->CSSetUnorderedAccessViews(0,5,outputs,nullptr);context->CSSetShader((batch==rayBatches-1?rayFinish:batch>=segmentBatch?raySegment:rayContinue)[profile].Get(),nullptr,0);
-        context->DispatchIndirect(dispatchBuffer.Get(),batch>=segmentBatch && batch<rayBatches-1?16:0);
+        context->CSSetUnorderedAccessViews(0,5,outputs,nullptr);
+        if(batch>=adaptiveBatch && batch<segmentBatch) {
+            // prepareRays gives one of these two passes zero groups.
+            context->CSSetShader(rayContinue[profile].Get(),nullptr,0);context->DispatchIndirect(dispatchBuffer.Get(),32);
+            context->CSSetShader(raySegment[profile].Get(),nullptr,0);context->DispatchIndirect(dispatchBuffer.Get(),48);
+        } else {
+            context->CSSetShader((batch==rayBatches-1?rayFinish:batch>=segmentBatch?raySegment:rayContinue)[profile].Get(),nullptr,0);
+            context->DispatchIndirect(dispatchBuffer.Get(),batch>=segmentBatch && batch<rayBatches-1?16:0);
+        }
         context->CSSetShaderResources(1,2,noViews);context->CSSetUnorderedAccessViews(0,5,noTargets,nullptr);
         if(measureBatches) recordRayBatch(batch);
         if(measurePasses && (batch==1 || batch==rayBatches-1)) context->End(passQueries[batch==1?2:3].Get());

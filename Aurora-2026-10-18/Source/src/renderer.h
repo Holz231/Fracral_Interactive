@@ -90,7 +90,9 @@ class Renderer {
     static constexpr int rayChunk=64;
     static constexpr int maxRayBatches=33;
     // Rays finish long before the 20th batch; empty batches still cost time.
-    static constexpr int rayBatches=20,segmentBatch=8;
+    // From adaptiveBatch on, a queue shorter than SEGMENT_QUEUE (fractal.hlsl)
+    // already uses the parallel intervals; from segmentBatch on, every queue does.
+    static constexpr int rayBatches=20,segmentBatch=8,adaptiveBatch=2;
     std::array<ComPtr<ID3D11Query>,5> passQueries;
     bool measurePasses=false,legacyScheduling=false,measureBatches=false;
     std::array<ComPtr<ID3D11Query>,maxRayBatches*2+1> batchQueries;

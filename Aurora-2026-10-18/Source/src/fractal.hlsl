@@ -568,6 +568,11 @@ Texture2D frameTexture:register(t0);
 #ifndef RAY_CHUNK
 #define RAY_CHUNK 64
 #endif
+// Below this queue length one lane per ray underfills the GPU; the 32-lane
+// intervals of segmentRays are faster even before the fixed segment batch.
+#ifndef SEGMENT_QUEUE
+#define SEGMENT_QUEUE 16384
+#endif
 struct RayJob {
     uint index;float horizon,scale,t,previous,radius,relaxation;
     int first,accepted;uint verify;float derivative,limit;
@@ -837,6 +842,10 @@ void prepareRays(uint3 id:SV_DispatchThreadID) {
     uint segmentGroups=(dispatchOutput[3]+0)/1;
     dispatchOutput[4]=min(segmentGroups,65535);
     dispatchOutput[5]=max(1,(segmentGroups+65534)/65535);dispatchOutput[6]=1;
+    // Adaptive batches: continuation at [8], intervals at [12]; one gets zero groups.
+    bool parallel=dispatchOutput[3]<SEGMENT_QUEUE;
+    dispatchOutput[8]=parallel?0:dispatchOutput[0];dispatchOutput[9]=dispatchOutput[1];dispatchOutput[10]=1;
+    dispatchOutput[12]=parallel?dispatchOutput[4]:0;dispatchOutput[13]=dispatchOutput[5];dispatchOutput[14]=1;
     #if SORT_RAYS
     uint offset=0;
     [loop] for(uint bin=0;bin<128;bin++) {uint count=rayBuckets[bin];rayBuckets[bin]=offset;offset+=count;}
