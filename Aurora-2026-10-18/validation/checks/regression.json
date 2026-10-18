@@ -1,0 +1,9 @@
+{
+  "checkpoints": [
+    {"zoom_log10":0.00171405,"gpu_field_relative_error":6.22968e-07,"unit_change_mean_pixel_error":4.38771e-05,"motion_max_mean_pixel_change":0.00163076},
+    {"zoom_log10":6.00366,"gpu_field_relative_error":0.00932019,"unit_change_mean_pixel_error":0.000276021,"motion_max_mean_pixel_change":0.00373892},
+    {"zoom_log10":24.0027,"gpu_field_relative_error":0.00912276,"unit_change_mean_pixel_error":0.00025979,"motion_max_mean_pixel_change":0.00315559},
+    {"zoom_log10":80.0017,"gpu_field_relative_error":0.00733422,"unit_change_mean_pixel_error":0.000204001,"motion_max_mean_pixel_change":0.00793451}
+  ],
+  "passed": true
+}
