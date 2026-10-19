@@ -1,0 +1,5 @@
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-box-march\fractal.hlsl(249,20): warning X3078: 'j': loop control variable conflicts with a previous declaration in the outer scope; most recent declaration will be used
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-box-march\fractal.hlsl(107,17-25): warning X3556: integer divides may be much slower, try using uints if possible.
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-box-march\fractal.hlsl(596,5): warning X4000: use of potentially uninitialized variable (marchJob)
+
+compilation object save succeeded; see C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-box-march\shaders\cachedRays.dxil

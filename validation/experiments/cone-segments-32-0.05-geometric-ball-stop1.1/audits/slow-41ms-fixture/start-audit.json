@@ -1,0 +1,24 @@
+{
+  "16": {
+    "baseline_hits_skipped": 0,
+    "minimum_log2_margin": 0.026599884033203125,
+    "finite": true
+  },
+  "8": {
+    "baseline_hits_skipped": 0,
+    "minimum_log2_margin": 0.012786865234375,
+    "finite": true
+  },
+  "4": {
+    "baseline_hits_skipped": 0,
+    "minimum_log2_margin": 0.005466461181640625,
+    "finite": true
+  },
+  "depth": {
+    "closer_by_over_1_percent": 2214,
+    "farther_by_over_1_percent": 2117,
+    "farther_by_over_2x": 65,
+    "lost_hits": 31,
+    "unfinished": 0
+  }
+}

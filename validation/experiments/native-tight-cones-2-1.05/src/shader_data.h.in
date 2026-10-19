@@ -1,0 +1,2 @@
+#pragma once
+inline constexpr char shaderSource[]=R"AURORASHADER(@FRACTAL_SHADER@)AURORASHADER";

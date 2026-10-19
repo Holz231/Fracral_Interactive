@@ -1,0 +1,30 @@
+{
+  "from_frame_0": {
+    "frames": 600,
+    "fps_from_elapsed": 58.53867962281147,
+    "gpu_mean_ms": 14.657779598662206,
+    "gpu_p95_ms": 17.080444999999997,
+    "gpu_max_ms": 215.717,
+    "frame_p95_ms": 16.89467,
+    "frame_max_ms": 241.987,
+    "frames_over_25ms": 4
+  },
+  "from_frame_30": {
+    "frames": 570,
+    "fps_from_elapsed": 59.978811695573654,
+    "gpu_mean_ms": 14.137405614035089,
+    "gpu_p95_ms": 16.710359999999998,
+    "gpu_max_ms": 17.6565,
+    "frame_p95_ms": 16.88347,
+    "frame_max_ms": 17.4303,
+    "frames_over_25ms": 0
+  },
+  "baseline_motion": {
+    "mean_max_channel_delta": 0.19865665217391304,
+    "pixels_over_16": 2143.9565217391305
+  },
+  "candidate_motion": {
+    "mean_max_channel_delta": 0.2007009565217391,
+    "pixels_over_16": 2201.0
+  }
+}

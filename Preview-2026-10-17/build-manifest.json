@@ -1,0 +1,18 @@
+{
+  "AuroraFractal.exe": "34bdb274751e1f493fb370054ca2652b09749c7a1b73d88071f2237952c2c130",
+  "README.md": "347faab872e9b160d2cd0a86ae030c39e83e85b45ca5e9bdc9e561b470c59cd4",
+  "Validation.md": "730df84f4daa2e6c292b7c6c8a87bf2723a0f732caa29035c8f9828671c5b54c",
+  "Acceleration-history.md": "5efa3ca17b3eaaaac6c548aa16077f5bd52bd69f2ce64c2c78af117280900c3c",
+  "Source/CMakeLists.txt": "77f158525adb29eb61d461449b74017b294bc1ca1350b98d5aede41571f38598",
+  "Source/src/citadel.h": "30f1ee35fe9916107b7c3dfce38c53a0cfc16a7b8fe252145da81f91d53d8f2c",
+  "Source/src/flight_time.h": "9d4852b2c139db659063ea4a1297db5c972ffba9da551d4bbade14870bef1f22",
+  "Source/src/fractal.hlsl": "027b2f56c6fc3d346b47039ca3b6a34b00cbb634fc6b0701d6d39ab1ca25f3f4",
+  "Source/src/main.cpp": "8b75f5ecf213b044d3c4d9f46d8c32750cbd9ccb9bb03059cb2a94667340a522",
+  "Source/src/renderer.cpp": "d88d5edcf6797b3d770fbdecd339a870601a4f8253615e11987f0883ca129ca8",
+  "Source/src/renderer.h": "0df0db1633913c9d6183aa3e2a10da70582901d7f481e65c199103cb6b42fc3f",
+  "Source/src/shader_data.h.in": "77a2735c94b6d44ce0d21d8f71e63c24965bec1c23864f3b58f0cf53f252bb93",
+  "Source/src/world.h": "f0887a3da8a5e3be7a5ca9eefea0f3d26031d904525b11e8786199f51b728f26",
+  "Source/tests/citadel_tests.cpp": "5eb8f7d6b4af2cd632a4633e3517e4d7b5fdd203e3f76d80122bc1c1e091b91b",
+  "Source/tests/world_tests.cpp": "bdf551103847405ec03f088ea37bed1a2a3642944b49267f399e78ab7499eed5",
+  "Source/tests/fixtures/edge-sphere.aurora": "52a2228a0d21eb76b754231f63869d3e36abdc11a41fd517c39904b90ec35032"
+}

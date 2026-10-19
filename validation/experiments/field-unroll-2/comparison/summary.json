@@ -1,0 +1,170 @@
+{
+  "slow-69ms-fixture": {
+    "baseline": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 15.764832,
+      "max_ms": 17.447936,
+      "status_changes": 603,
+      "hit_depth_changes": 2010847,
+      "max_log_depth_error": 30.1676216,
+      "unfinished": 0,
+      "exit": 2
+    },
+    "candidate": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 15.1135253,
+      "max_ms": 15.208448,
+      "status_changes": 0,
+      "hit_depth_changes": 0,
+      "max_log_depth_error": 0,
+      "unfinished": 0,
+      "exit": 0
+    }
+  },
+  "slow-41ms-fixture": {
+    "baseline": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 13.793984,
+      "max_ms": 13.860864,
+      "status_changes": 1116,
+      "hit_depth_changes": 1966134,
+      "max_log_depth_error": 3.4957428,
+      "unfinished": 0,
+      "exit": 2
+    },
+    "candidate": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 13.3595627,
+      "max_ms": 13.430784,
+      "status_changes": 0,
+      "hit_depth_changes": 0,
+      "max_log_depth_error": 0,
+      "unfinished": 0,
+      "exit": 0
+    }
+  },
+  "slow-45ms-fixture": {
+    "baseline": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 10.511136,
+      "max_ms": 10.595328,
+      "status_changes": 863,
+      "hit_depth_changes": 1065978,
+      "max_log_depth_error": 1.51334047,
+      "unfinished": 0,
+      "exit": 2
+    },
+    "candidate": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 10.1308587,
+      "max_ms": 10.213376,
+      "status_changes": 0,
+      "hit_depth_changes": 0,
+      "max_log_depth_error": 0,
+      "unfinished": 0,
+      "exit": 0
+    }
+  },
+  "slow-384ms-fixture": {
+    "baseline": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 9.37629867,
+      "max_ms": 9.468928,
+      "status_changes": 0,
+      "hit_depth_changes": 2059826,
+      "max_log_depth_error": 54.6091142,
+      "unfinished": 0,
+      "exit": 2
+    },
+    "candidate": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 9.18663467,
+      "max_ms": 9.28256,
+      "status_changes": 0,
+      "hit_depth_changes": 0,
+      "max_log_depth_error": 0,
+      "unfinished": 0,
+      "exit": 0
+    }
+  },
+  "interior-fixture": {
+    "baseline": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 9.564,
+      "max_ms": 9.68192,
+      "status_changes": 0,
+      "hit_depth_changes": 2063891,
+      "max_log_depth_error": 3.67233467,
+      "unfinished": 0,
+      "exit": 2
+    },
+    "candidate": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 9.342752,
+      "max_ms": 9.44128,
+      "status_changes": 0,
+      "hit_depth_changes": 0,
+      "max_log_depth_error": 0,
+      "unfinished": 0,
+      "exit": 0
+    }
+  },
+  "stutter-fixture": {
+    "baseline": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 4.26199467,
+      "max_ms": 4.306944,
+      "status_changes": 0,
+      "hit_depth_changes": 2090451,
+      "max_log_depth_error": 3.64000973,
+      "unfinished": 0,
+      "exit": 2
+    },
+    "candidate": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 4.19316267,
+      "max_ms": 4.23424,
+      "status_changes": 0,
+      "hit_depth_changes": 0,
+      "max_log_depth_error": 0,
+      "unfinished": 0,
+      "exit": 0
+    }
+  },
+  "slow-start-56ms-fixture": {
+    "baseline": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 2.08661333,
+      "max_ms": 2.106368,
+      "status_changes": 81,
+      "hit_depth_changes": 1332891,
+      "max_log_depth_error": 1.63000858,
+      "unfinished": 0,
+      "exit": 2
+    },
+    "candidate": {
+      "width": 1980,
+      "height": 1058,
+      "trace_refine_ms": 2.04568533,
+      "max_ms": 2.08384,
+      "status_changes": 0,
+      "hit_depth_changes": 0,
+      "max_log_depth_error": 0,
+      "unfinished": 0,
+      "exit": 0
+    }
+  }
+}

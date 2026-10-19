@@ -1,0 +1,18 @@
+{
+  "AuroraFractal.exe": "559c7d881fba21f08fbf6c5f338b1c2e937e958bf8135f393ada7a9b8a5ffcc7",
+  "last-flight.aurora": "8eb0aaf22069f8e0d6cbf645f11d5e8d3e3b090acb87aebef3a43dcc380f1d87",
+  "README.md": "c76e3f15d3564990df87babac224ad91896f1da602bebf1fc43c194e5274caf1",
+  "settings.txt": "f3bd82c0b52de296c65c0c95660b0f763caa853ae1a903f5d8b047c177146d94",
+  "Source/CMakeLists.txt": "77f158525adb29eb61d461449b74017b294bc1ca1350b98d5aede41571f38598",
+  "Source/src/citadel.h": "bdeb0a85793237105ec47bc7acffbbb4457b41699783acafb128229373abd9e1",
+  "Source/src/flight_time.h": "9d4852b2c139db659063ea4a1297db5c972ffba9da551d4bbade14870bef1f22",
+  "Source/src/fractal.hlsl": "1050280460c74d0f263bfb15d1d4a3d7e98f559cb62a73f9c32ec28dfd5e0698",
+  "Source/src/main.cpp": "73f503eb64da46ffd13bf33f62463b6ec52b82f80d39bd477af151e71c767e36",
+  "Source/src/renderer.cpp": "348bb62d89f6fd4094a2dff4a274bd59e2422922407c74abea26841650fcf1c5",
+  "Source/src/renderer.h": "7892fe69479e68c5f2be28ee41e58452d1927b1642746cc5f4b951721f96c408",
+  "Source/src/shader_data.h.in": "77a2735c94b6d44ce0d21d8f71e63c24965bec1c23864f3b58f0cf53f252bb93",
+  "Source/src/world.h": "f0887a3da8a5e3be7a5ca9eefea0f3d26031d904525b11e8786199f51b728f26",
+  "Source/tests/citadel_tests.cpp": "acffdab416658661e8659d38be50182a71d657b90a079aec80d05861c99c6f09",
+  "Source/tests/world_tests.cpp": "bdf551103847405ec03f088ea37bed1a2a3642944b49267f399e78ab7499eed5",
+  "Validation.md": "5efa3ca17b3eaaaac6c548aa16077f5bd52bd69f2ce64c2c78af117280900c3c"
+}

@@ -1,0 +1,12 @@
+{
+  "baseline": {
+    "mean_max_channel_delta": 0.19865665217391304,
+    "pixels_over_16": 2143.9565217391305,
+    "worst_frame_mean": 0.204867
+  },
+  "candidate": {
+    "mean_max_channel_delta": 0.20072995652173917,
+    "pixels_over_16": 2201.5652173913045,
+    "worst_frame_mean": 0.205869
+  }
+}

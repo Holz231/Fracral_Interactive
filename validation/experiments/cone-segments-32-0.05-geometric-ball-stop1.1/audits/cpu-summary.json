@@ -1,0 +1,44 @@
+{
+  "interior-fixture": {
+    "rays": 254,
+    "cpu_misses": 0,
+    "cone_skipped_cpu_hit": 0,
+    "candidate_max_de_over_epsilon": 1.00030837509808
+  },
+  "slow-384ms-fixture": {
+    "rays": 255,
+    "cpu_misses": 0,
+    "cone_skipped_cpu_hit": 0,
+    "candidate_max_de_over_epsilon": 0.999856087312936
+  },
+  "slow-41ms-fixture": {
+    "rays": 319,
+    "cpu_misses": 0,
+    "cone_skipped_cpu_hit": 0,
+    "candidate_max_de_over_epsilon": 1.03385830273937
+  },
+  "slow-45ms-fixture": {
+    "rays": 318,
+    "cpu_misses": 0,
+    "cone_skipped_cpu_hit": 0,
+    "candidate_max_de_over_epsilon": 1.00012015704344
+  },
+  "slow-69ms-fixture": {
+    "rays": 318,
+    "cpu_misses": 0,
+    "cone_skipped_cpu_hit": 0,
+    "candidate_max_de_over_epsilon": 1.00019296264043
+  },
+  "slow-start-56ms-fixture": {
+    "rays": 253,
+    "cpu_misses": 0,
+    "cone_skipped_cpu_hit": 0,
+    "candidate_max_de_over_epsilon": 0.999911139512686
+  },
+  "stutter-fixture": {
+    "rays": 252,
+    "cpu_misses": 0,
+    "cone_skipped_cpu_hit": 0,
+    "candidate_max_de_over_epsilon": 0.999935676267367
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "slow-41ms-fixture": {
+    "lost": {
+      "rays": 31,
+      "cpu_hits": 24,
+      "cached_starts_skipping_cpu_hits": 0
+    },
+    "gained": {
+      "rays": 39,
+      "cpu_hits": 34,
+      "cached_starts_skipping_cpu_hits": 0
+    }
+  },
+  "slow-start-56ms-fixture": {
+    "lost": {
+      "rays": 44,
+      "cpu_hits": 41,
+      "cached_starts_skipping_cpu_hits": 0
+    },
+    "gained": {
+      "rays": 37,
+      "cpu_hits": 32,
+      "cached_starts_skipping_cpu_hits": 0
+    }
+  }
+}

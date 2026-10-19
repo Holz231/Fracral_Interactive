@@ -1,0 +1,62 @@
+{
+  "slow-69ms-fixture": {
+    "from_frame_0": {
+      "fps_from_elapsed": 44.47624166269686,
+      "frame_p95_ms": 33.602109999999996,
+      "frame_max_ms": 34.5192,
+      "frames_over_25ms": 209
+    },
+    "from_frame_10": {
+      "fps_from_elapsed": 44.7309204656031,
+      "frame_p95_ms": 33.594395,
+      "frame_max_ms": 34.5192,
+      "frames_over_25ms": 201
+    },
+    "from_frame_30": {
+      "fps_from_elapsed": 45.51859163752558,
+      "frame_p95_ms": 33.545995000000005,
+      "frame_max_ms": 34.5192,
+      "frames_over_25ms": 181
+    }
+  },
+  "queue2-flight": {
+    "from_frame_0": {
+      "fps_from_elapsed": 59.88473386425808,
+      "frame_p95_ms": 17.112245,
+      "frame_max_ms": 34.7723,
+      "frames_over_25ms": 3
+    },
+    "from_frame_10": {
+      "fps_from_elapsed": 59.877441634616,
+      "frame_p95_ms": 17.102050000000002,
+      "frame_max_ms": 33.5249,
+      "frames_over_25ms": 1
+    },
+    "from_frame_30": {
+      "fps_from_elapsed": 59.98027659094291,
+      "frame_p95_ms": 17.09914,
+      "frame_max_ms": 17.7408,
+      "frames_over_25ms": 0
+    }
+  },
+  "queue3-flight": {
+    "from_frame_0": {
+      "fps_from_elapsed": 59.99139783346466,
+      "frame_p95_ms": 17.08262,
+      "frame_max_ms": 34.1895,
+      "frames_over_25ms": 3
+    },
+    "from_frame_10": {
+      "fps_from_elapsed": 59.87674828053515,
+      "frame_p95_ms": 17.07652,
+      "frame_max_ms": 33.7596,
+      "frames_over_25ms": 1
+    },
+    "from_frame_30": {
+      "fps_from_elapsed": 59.97862488080037,
+      "frame_p95_ms": 17.07652,
+      "frame_max_ms": 17.8488,
+      "frames_over_25ms": 0
+    }
+  }
+}

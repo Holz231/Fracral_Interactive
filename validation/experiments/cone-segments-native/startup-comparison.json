@@ -1,0 +1,94 @@
+{
+  "warm-flight": {
+    "startup_ms": 386.595,
+    "from_frame_0": {
+      "frames": 600,
+      "fps": 33.9977330878206,
+      "frame_p95_ms": 33.793124999999996,
+      "frame_max_ms": 50.4175,
+      "frames_over_25ms": 444,
+      "gpu_mean_ms": 29.341535117056857,
+      "gpu_p95_ms": 35.40595,
+      "gpu_max_ms": 37.2455
+    },
+    "from_frame_30": {
+      "frames": 570,
+      "fps": 34.24946938558903,
+      "frame_p95_ms": 33.66628,
+      "frame_max_ms": 50.4175,
+      "frames_over_25ms": 416,
+      "gpu_mean_ms": 29.06628245614035,
+      "gpu_p95_ms": 34.92068999999999,
+      "gpu_max_ms": 37.2455
+    }
+  },
+  "warm-check": {
+    "startup_ms": 245.541,
+    "from_frame_0": {
+      "frames": 600,
+      "fps": 60.04717786670633,
+      "frame_p95_ms": 16.924875,
+      "frame_max_ms": 33.7764,
+      "frames_over_25ms": 1,
+      "gpu_mean_ms": 14.240967391304348,
+      "gpu_p95_ms": 16.89228,
+      "gpu_max_ms": 17.6115
+    },
+    "from_frame_30": {
+      "frames": 570,
+      "fps": 59.979718647346225,
+      "frame_p95_ms": 16.922145,
+      "frame_max_ms": 17.6329,
+      "frames_over_25ms": 0,
+      "gpu_mean_ms": 14.111248947368422,
+      "gpu_p95_ms": 16.690485,
+      "gpu_max_ms": 17.4651
+    }
+  },
+  "startup-skip": {
+    "startup_ms": 0.0,
+    "from_frame_0": {
+      "frames": 600,
+      "fps": 59.799428530747875,
+      "frame_p95_ms": 16.91196,
+      "frame_max_ms": 33.8288,
+      "frames_over_25ms": 5,
+      "gpu_mean_ms": 14.294403344481603,
+      "gpu_p95_ms": 17.054815,
+      "gpu_max_ms": 19.2481
+    },
+    "from_frame_30": {
+      "frames": 570,
+      "fps": 59.87468291891055,
+      "frame_p95_ms": 16.903795000000002,
+      "frame_max_ms": 33.0952,
+      "frames_over_25ms": 1,
+      "gpu_mean_ms": 14.119972456140353,
+      "gpu_p95_ms": 16.67006,
+      "gpu_max_ms": 17.5235
+    }
+  },
+  "startup-warm": {
+    "startup_ms": 227.062,
+    "from_frame_0": {
+      "frames": 600,
+      "fps": 60.062848563479854,
+      "frame_p95_ms": 16.940050000000003,
+      "frame_max_ms": 33.1965,
+      "frames_over_25ms": 1,
+      "gpu_mean_ms": 14.28396772575251,
+      "gpu_p95_ms": 16.978830000000002,
+      "gpu_max_ms": 17.6333
+    },
+    "from_frame_30": {
+      "frames": 570,
+      "fps": 59.98240116349863,
+      "frame_p95_ms": 16.936529999999998,
+      "frame_max_ms": 17.1112,
+      "frames_over_25ms": 0,
+      "gpu_mean_ms": 14.152691228070175,
+      "gpu_p95_ms": 16.743055,
+      "gpu_max_ms": 17.6046
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "adapter": "NVIDIA GeForce RTX 4070 SUPER",
+  "world": "Mandelbox Julia citadel",
+  "resolution": "1280x720",
+  "timing_scope": "GPU fractal pass; excludes upscaling, UI and vsync",
+  "balanced": {"max_ray_steps": 8192, "shadow_steps": 4, "initial_gpu_ms": 0.7178, "deep_gpu_ms": 4.3332},
+  "ultra": {"max_ray_steps": 8192, "shadow_steps": 8, "initial_gpu_ms": 1.3448, "deep_gpu_ms": 9.5121},
+  "vault_culling_check": {"ray_steps": 132, "shadow_steps": 8, "baseline_gpu_ms": 3.6936, "optimized_gpu_ms": 3.4218, "max_channel_difference": 0, "pixels_over_one_level": 0},
+  "deep_reference_iterations": 16,
+  "deep_zoom_log10": 6.0018,
+  "all_quality_shaders_and_resize_passed": true,
+  "manual_pause_idle_and_controls_passed": true
+}

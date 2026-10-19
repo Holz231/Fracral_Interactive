@@ -1,0 +1,6 @@
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-march\fractal.hlsl(249,20): warning X3078: 'j': loop control variable conflicts with a previous declaration in the outer scope; most recent declaration will be used
+compilation object save succeeded; see C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-march\shaders\cachedRays.dxil
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-march\fractal.hlsl(107,17-25): warning X3556: integer divides may be much slower, try using uints if possible.
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-march\fractal.hlsl(493,58): warning X4000: use of potentially uninitialized variable (boundedRoot)
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\interval-march\fractal.hlsl(641,5): warning X4000: use of potentially uninitialized variable (marchJob)
+

@@ -1,5 +1,27 @@
 # Aurora — Native Fractal Flight
 
+**Current version: Aurora-2026-10-18.** Open **Aurora 60 FPS.lnk** to continue the
+latest saved flight. It adds temporal anti-aliasing against the speckle and flicker on
+grazing surfaces, a faster exact fold evaluation, bounded grazing rays and a mild
+dynamic-resolution safety net. In 600-frame presented flights at 1980 × 1058 Balanced,
+all four heavy saved routes ran at 60 FPS with no frame interval above 20 ms (the
+2026-10-17 preview: 36.5 and 44.3 FPS on the two slowest). Details, measurements and
+limits are in [Aurora-2026-10-18/README.md](Aurora-2026-10-18/README.md) (German).
+The preview and root executables below are unchanged.
+
+The native preview now includes the corner precision fix; see
+[validation/edge-fix-2026-10-17.md](validation/edge-fix-2026-10-17.md) for reproduction,
+image comparisons and remaining frame-time limits.
+
+An accelerated native preview is available in **Preview-2026-10-17**. Open
+**Aurora Preview.lnk** to continue from its saved flight. The hardest saved view
+improved from 30.6 to 16.7 ms at the same resolution and detail settings; the
+tested flight route reached about 60 FPS after startup. This remains a preview
+with known silhouette sampling differences and one unexplained slow test run.
+See [the full validation report](validation/acceleration-2026-10-17.md). The root
+executable remains the previous version; the preview has its own source snapshot,
+settings and saved flight.
+
 
 
 Double-click **AuroraFractal.exe**. This is a native 64-bit Windows application that renders through Direct3D 11 on your GPU. The executable includes its shaders and C++ runtime. No installer or internet connection is needed. `last-run.txt` identifies the selected hardware adapter.

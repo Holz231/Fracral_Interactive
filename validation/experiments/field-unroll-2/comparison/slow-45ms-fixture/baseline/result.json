@@ -1,0 +1,11 @@
+{
+  "width": 1980,
+  "height": 1058,
+  "trace_refine_ms": 10.511136,
+  "max_ms": 10.595328,
+  "status_changes": 863,
+  "hit_depth_changes": 1065978,
+  "max_log_depth_error": 1.51334047,
+  "unfinished": 0,
+  "exit": 2
+}

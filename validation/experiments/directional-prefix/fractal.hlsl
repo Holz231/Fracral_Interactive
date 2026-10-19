@@ -1,3 +1,9 @@
+#ifndef UNIFORM_FOLDS
+#define UNIFORM_FOLDS 0
+#endif
+#ifndef DEFER_SURFACE_REFINE
+#define DEFER_SURFACE_REFINE 0
+#endif
 #ifndef MARCH_STEPS
 #define MARCH_STEPS 8192
 #endif
@@ -92,12 +98,74 @@ float3 foldedDeltaVector(float3 before,float3 folded,float3 delta) {
 }
 // Distance and offset use the same scale. Logarithmic travel preserves the
 // actual ancestors in the far view; it never substitutes a background world.
+RWTexture2DArray<float> coneLimitsOut:register(u6);
+Texture2DArray<float> coneLimits:register(t5);
+static uint2 prefixTile=uint2(0,0);
+float directionalLimit(int i) {return coneLimits.Load(int4(prefixTile,i,0));}
+float positiveRoot(float a,float b,float c) {
+    float root=1e30;
+    if(abs(a)<1e-25) {
+        if(abs(b)>1e-25 && -c/b>0) root=-c/b;
+    } else {
+        float disc=b*b-4*a*c;
+        if(disc>=0) {
+            float q=-.5*(b+(b>=0?1:-1)*sqrt(disc));
+            float x=q/a,y=abs(q)>1e-30?c/q:1e30;
+            if(x>0) root=min(root,x);
+            if(y>0) root=min(root,y);
+        }
+    }
+    return root;
+}
+float planeLimit(float3 p,float3 v,float3 pole,int axis,float boundary,float spread) {
+    float c=p[axis]-boundary;
+    float3 coefficient=2*c*pole;coefficient[axis]+=1;
+    float b=dot(coefficient,v)-(c>=0?1:-1)*length(coefficient)*spread;
+    float a=c*dot(pole,pole)+pole[axis];
+    return positiveRoot(a,b,c);
+}
+float sphereLimit(float3 p,float3 v,float3 pole,float radius,float spread) {
+    float c=dot(p,p)-radius*radius;
+    float3 coefficient=2*(c*pole+p);
+    float b=dot(coefficient,v)-(c>=0?1:-1)*length(coefficient)*spread;
+    float a=c*dot(pole,pole)+2*dot(p,pole)+1;
+    return positiveRoot(a,b,c);
+}
+[numthreads(8,8,1)]
+void prefixCones(uint3 id:SV_DispatchThreadID) {
+    uint2 size=(uint2(renderInfo.xy)+15)/16;
+    if(any(id.xy>=size)) return;
+    float2 center=float2(id.xy)*16+8;
+    float2 uv=(center*2-renderInfo.xy)/renderInfo.y;uv.y=-uv.y;
+    float3 rd=normalize(viewRight.xyz*uv.x+viewUp.xyz*uv.y+viewForward.xyz*1.85);
+    float spread=1.414214*16/(renderInfo.y*1.85)+2e-6;
+    float limit=1024;
+    [loop] for(int i=0;i<counts.x;i++) {
+        OrbitSample r=reference[i];
+        coneLimitsOut[uint3(id.xy,i)]=max(limit,r.curve.w);
+        float3 p=r.p.xyz,pole=r.curve.xyz;
+        float3 v=r.x.xyz*rd.x+r.y.xyz*rd.y+r.z.xyz*rd.z;
+        float bound=1e30;
+        [unroll] for(int axis=0;axis<3;axis++) {
+            if(p[axis]>=-1) bound=min(bound,planeLimit(p,v,pole,axis,1,spread));
+            if(p[axis]<=1) bound=min(bound,planeLimit(p,v,pole,axis,-1,spread));
+        }
+        // Sphere branches apply to the BOX-FOLDED point, not p itself.
+        // Transform orientation and pole by the unchanged box reflection.
+        float3 sign=float3(abs(p.x)>1?-1:1,abs(p.y)>1?-1:1,abs(p.z)>1?-1:1);
+        float3 q=r.q.xyz;float squared=dot(q,q);
+        if(squared<=1) bound=min(bound,sphereLimit(q,v*sign,pole*sign,.5,spread));
+        if(squared>=.25) bound=min(bound,sphereLimit(q,v*sign,pole*sign,1,spread));
+        bound=min(bound,sphereLimit(p,v,pole,64,spread));
+        limit=min(limit,log2(max(bound*.85,1e-30))-r.p.w);
+    }
+}
 int citadelStart(float radiusLog) {
     int lo=0,hi=counts.x;
     [loop] while(lo+1<hi) {
         int mid=(lo+hi)/2;
         #if FAST_CITADEL
-        if(radiusLog<reference[mid].curve.w) lo=mid;else hi=mid;
+        if(radiusLog<directionalLimit(mid)) lo=mid;else hi=mid;
         #else
         if(radiusLog<reference[mid].x.w) lo=mid;else hi=mid;
         #endif
@@ -106,7 +174,7 @@ int citadelStart(float radiusLog) {
 }
 float prefixLimit(int index) {
     #if FAST_CITADEL
-    return reference[index].curve.w;
+    return directionalLimit(index);
     #else
     return reference[index].x.w;
     #endif
@@ -134,7 +202,7 @@ float citadelDistanceScaled(float3 basis,float3 origin,float3 pole,float derivat
         fieldIterations++;
         #endif
         OrbitSample s=reference[iteration];
-        #if FLAT_FIELD
+        #if UNIFORM_FOLDS
         delta=foldedDeltaVector(s.p.xyz,s.q.xyz,delta);
         #else
         delta=float3(foldedDelta(s.p.x,s.q.x,delta.x),foldedDelta(s.p.y,s.q.y,delta.y),foldedDelta(s.p.z,s.q.z,delta.z));
@@ -149,7 +217,10 @@ float citadelDistanceScaled(float3 basis,float3 origin,float3 pole,float derivat
         #if TRACE_DIAGNOSTIC == 3
         fieldIterations++;
         #endif
-        #if !FLAT_FIELD
+        // A uniform loop avoids the nested escape-tail loop and its live
+        // state. Outside radius eight the sphere denominator is already one,
+        // so the arithmetic and bailout points are identical.
+        #if !UNIFORM_FOLDS
         if(dot(p,p)>64) {
             [unroll] for(int tail=0;tail<4;tail++) {
                 if(iteration+tail>=end) break;
@@ -280,36 +351,6 @@ RayPrefix rayPrefix(float3 rd,int first,float scale) {
     OrbitSample a=reference[first];RayPrefix r;
     r.basis=a.x.xyz*rd.x+a.y.xyz*rd.y+a.z.xyz*rd.z;r.origin=a.p.xyz;r.pole=a.curve.xyz;
     r.derivative=exp2(max(a.p.w+scale,-120));r.limit=exp2(min(prefixLimit(first)-scale,100));return r;
-}
-float forwardRoot(float3 p) {
-    float bound=1e20;
-    if(abs(p.z)<1e-20) {if(p.y!=0) {float root=-p.x/p.y;if(root>=0) bound=root;}return bound;}
-    float disc=p.y*p.y-4*p.z*p.x;
-    if(disc<0) return bound;
-    float q=-.5*(p.y+(p.y>=0?1:-1)*sqrt(disc));
-    float a=q/p.z,b=q!=0?p.x/q:0;
-    if(a>=0) bound=min(bound,a);if(b>=0) bound=min(bound,b);return bound;
-}
-RayPrefix extendPrefix(float3 rd,float scale,float t,inout int first,RayPrefix prefix) {
-    float limit=prefix.limit;
-    [loop] for(int extra=0;extra<8 && first+1<counts.x;extra++) {
-        float3 b=prefix.origin,v=prefix.basis,k=prefix.pole;
-        float3 w=float3(1,2*dot(k,v),dot(k,k));float bound=1e20;
-        [unroll] for(int axis=0;axis<3;axis++) {
-            float3 poly=float3(0,v[axis],k[axis])+b[axis]*w;
-            bound=min(bound,min(forwardRoot(poly-w),forwardRoot(poly+w)));
-        }
-        float3 escape=(dot(b,b)-4096)*w+float3(0,2*dot(b,v),2*dot(b,k)+1);
-        if(first>0) bound=min(bound,forwardRoot(escape));
-        float3 orientation=abs(b)>1?-1:1;
-        b=2*clamp(b,-1,1)-b;v*=orientation;k*=orientation;
-        float3 norm=dot(b,b)*w+float3(0,2*dot(b,v),2*dot(b,k)+1);
-        bound=min(bound,min(forwardRoot(norm-.25*w),forwardRoot(norm-w)));
-        float nextLimit=min(limit,bound*.99/prefix.derivative);
-        if(nextLimit<=t*1.005) break;
-        first++;prefix=rayPrefix(rd,first,scale);limit=nextLimit;prefix.limit=limit;
-    }
-    return prefix;
 }
 float2 traceCitadel(float3 rd,float pixel,float start,float horizon,out int steps) {
     // A local linear travel coordinate avoids log/exp and cancellation on every
@@ -457,6 +498,7 @@ RWStructuredBuffer<RayJob> nextRays:register(u1);
 RWBuffer<uint> dispatchOutput:register(u2);
 RWBuffer<uint> rayCount:register(u3);
 RWBuffer<uint> rayBuckets:register(u4);
+RWStructuredBuffer<float4> refinementJobs:register(u5);
 Buffer<uint> bucketOffsets:register(t4);
 StructuredBuffer<RayJob> activeRays:register(t1);
 Buffer<uint> dispatchInput:register(t2);
@@ -481,7 +523,6 @@ bool initializeJob(inout RayJob job,float3 rd) {
     job.horizon+=max(1e-4,2*pixel);
     job.scale=floor(start);job.t=exp2(start-job.scale);job.previous=job.t;job.relaxation=.9;
     job.first=citadelStart(start);RayPrefix prefix=rayPrefix(rd,job.first,job.scale);
-    prefix=extendPrefix(rd,job.scale,job.t,job.first,prefix);
     job.derivative=prefix.derivative;job.limit=prefix.limit;return true;
 }
 bool marchJob(inout RayJob job,float3 rd,uint3 position) {
@@ -500,9 +541,8 @@ bool marchJob(inout RayJob job,float3 rd,uint3 position) {
             exitT=exp2(min(job.horizon-scale,24));
         }
         if(first>0 && t>=prefix.limit) {
-            first=citadelStart(log2(t)+scale);
+            [loop] do {first--;} while(first>0 && t>=exp2(min(prefixLimit(first)-scale,100)));
             prefix=rayPrefix(rd,first,scale);
-            prefix=extendPrefix(rd,scale,t,first,prefix);
         }
         float ratio=citadelDistanceScaled(prefix.basis,prefix.origin,prefix.pole,prefix.derivative*t,first);
         if(verify) {
@@ -513,6 +553,9 @@ bool marchJob(inout RayJob job,float3 rd,uint3 position) {
             if(t>exitT) {escaped=true;break;}
         }
         if(ratio<pixel*.65) {
+            #if DEFER_SURFACE_REFINE
+            hit=true;break;
+            #else
             float lower=previous,upper=t;
             [loop] for(int refine=0;refine<3;refine++) {
                 float middle=(lower+upper)*.5;
@@ -520,6 +563,7 @@ bool marchJob(inout RayJob job,float3 rd,uint3 position) {
                 if(d<pixel*.65) upper=middle;else lower=middle;
             }
             t=upper;hit=true;break;
+            #endif
         }
         if(radius>0 && t>previous) {
             float relative=t/previous;
@@ -529,6 +573,14 @@ bool marchJob(inout RayJob job,float3 rd,uint3 position) {
         previous=t;radius=ratio;t*=1+max(ratio*relaxation,1e-7);verify=relaxation>1;
         if(!verify && t>exitT) {escaped=true;break;}
     }
+    #if DEFER_SURFACE_REFINE
+    if(hit) {
+        // Preserve the exact bracket, cached derivative and reference depth.
+        // The independent pass performs the same three bisection queries.
+        refinementJobs[job.index]=float4(previous,t,prefix.derivative,float(first));
+        rayOutput[position]=float2(scale,2);return false;
+    }
+    #endif
     if(hit || escaped || accepted>=MARCH_STEPS) {
         rayOutput[position]=float2(log2(t)+scale,hit?1:escaped?0:-1);return false;
     }
@@ -584,7 +636,7 @@ void enqueueGroup(uint lane,bool pending,RayJob job) {
 void beginRays(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex) {
     RayJob job=(RayJob)0;bool pending=false;
     if(id.x<uint(renderInfo.x) && id.y<uint(renderInfo.y)) {
-        float3 rd=rayDirection(id);job.index=id.x+uint(renderInfo.x)*(id.y+uint(renderInfo.y)*id.z);
+        prefixTile=id.xy/16;float3 rd=rayDirection(id);job.index=id.x+uint(renderInfo.x)*(id.y+uint(renderInfo.y)*id.z);
         if(initializeJob(job,rd)) pending=marchJob(job,rd,id);
         else rayOutput[id]=float2(0,0);
     }
@@ -594,7 +646,7 @@ void beginRays(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex) {
 void continueRays(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex) {
     uint index=id.x+id.y*(65535*64);RayJob job=(RayJob)0;bool pending=false;
     if(index<dispatchInput[3]) {
-        job=activeRays[index];uint3 position=rayPixel(job.index);
+        job=activeRays[index];uint3 position=rayPixel(job.index);prefixTile=position.xy/16;
         pending=marchJob(job,rayDirection(position),position);
     }
     #if RAY_CHUNK < MARCH_STEPS
@@ -616,6 +668,22 @@ void sortRays(uint3 id:SV_DispatchThreadID) {
     if(index>=dispatchInput[3]) return;
     RayJob job=activeRays[index];uint rank=job.verify>>1;
     nextRays[bucketOffsets[rayBucket(job)]+rank]=job;
+}
+[numthreads(8,8,1)]
+void refineRays(uint3 position:SV_DispatchThreadID) {
+    if(position.x>=uint(renderInfo.x) || position.y>=uint(renderInfo.y)) return;
+    float2 sample=rayOutput[position];if(sample.y!=2) return;
+    prefixTile=position.xy/16;uint index=position.x+uint(renderInfo.x)*position.y;
+    float4 job=refinementJobs[index];float lower=job.x,upper=job.y;
+    float3 rd=rayDirection(position);int first=int(job.w);
+    RayPrefix prefix=rayPrefix(rd,first,sample.x);prefix.derivative=job.z;
+    float pixel=1/(renderInfo.y*1.85);
+    [loop] for(int refine=0;refine<3;refine++) {
+        float middle=(lower+upper)*.5;
+        float d=citadelDistanceScaled(prefix.basis,prefix.origin,prefix.pole,prefix.derivative*middle,first);
+        if(d<pixel*.65) upper=middle;else lower=middle;
+    }
+    rayOutput[position]=float2(log2(upper)+sample.x,1);
 }
 float4 shadeJob(uint3 p) {
     float2 surface=rayImage.Load(int4(p,0));float3 rd=rayDirection(p);

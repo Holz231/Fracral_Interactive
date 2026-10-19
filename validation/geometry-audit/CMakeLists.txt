@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(AuroraGeometryAudit LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+add_executable(AuroraGeometryAudit main.cpp)
+target_include_directories(AuroraGeometryAudit PRIVATE ../../src)
+target_compile_options(AuroraGeometryAudit PRIVATE /W4 /O2 /EHsc)

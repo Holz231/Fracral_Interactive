@@ -1,0 +1,26 @@
+{
+  "16": {
+    "baseline_hits_skipped": 0,
+    "minimum_log2_margin": 0.0419769287109375,
+    "minimum_start": 0.924568772315979,
+    "maximum_start": 44.66850280761719
+  },
+  "8": {
+    "baseline_hits_skipped": 0,
+    "minimum_log2_margin": 0.019178390502929688,
+    "minimum_start": 0.9483602046966553,
+    "maximum_start": 47.41122817993164
+  },
+  "4": {
+    "baseline_hits_skipped": 0,
+    "minimum_log2_margin": 0.008304595947265625,
+    "minimum_start": 0.9593139886856079,
+    "maximum_start": 48.175880432128906
+  },
+  "depth": {
+    "closer_by_over_1_percent": 2012,
+    "farther_by_over_1_percent": 2035,
+    "farther_by_over_2x": 86,
+    "lost_hits": 0
+  }
+}

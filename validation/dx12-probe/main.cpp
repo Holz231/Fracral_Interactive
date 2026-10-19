@@ -36,13 +36,25 @@ struct Probe {
     UINT64 serial=0,frequency=0;
     UINT width=0,height=0,stride=0;
     Resource constants,rays[2],output,refinement,args,count,buckets,timestamps,depthReadback;
-    Resource queueReadback;
+    Resource queueReadback,coneLimits;
+    ComPtr<ID3D12PipelineState> conePipeline,persistentPipeline;
+    std::array<ComPtr<ID3D12PipelineState>,4> conePyramid;
+    Resource pyramid,pyramidReadback;
+    std::array<D3D12_PLACED_SUBRESOURCE_FOOTPRINT,4> pyramidFootprints{};
+    UINT64 pyramidBytes=0;
+    UINT persistentWorkers=32768;
     bool inspectQueue=false;
+    HMODULE pix=nullptr;
+    using BeginMarker=void(WINAPI*)(ID3D12GraphicsCommandList*,UINT64,PCSTR);
+    using EndMarker=void(WINAPI*)(ID3D12GraphicsCommandList*);
+    BeginMarker beginMarker=nullptr;EndMarker endMarker=nullptr;
+    void begin(const std::string& name) {if(beginMarker) beginMarker(list.Get(),0xff4488ff,name.c_str());}
+    void end() {if(endMarker) endMarker(list.Get());}
     int cacheStart=4;
     std::array<ComPtr<ID3D12PipelineState>,8> pipelines;
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
     UINT64 copyBytes=0;
-    ~Probe() {CloseHandle(event);}
+    ~Probe() {CloseHandle(event);if(pix) FreeLibrary(pix);}
     D3D12_CPU_DESCRIPTOR_HANDLE cpu(UINT index,bool mirror=false) const {
         auto h=(mirror?cpuDescriptors:descriptors)->GetCPUDescriptorHandleForHeapStart();h.ptr+=SIZE_T(index)*stride;return h;
     }
@@ -84,6 +96,14 @@ struct Probe {
         list->ClearUnorderedAccessViewUint(gpu(descriptor),cpu(descriptor,true),r.object.Get(),zero,0,nullptr);
     }
     void initialize(const fs::path& shaderDirectory,const std::vector<char>& data) {
+        if(GetEnvironmentVariableW(L"AURORA_PROBE_MARKERS",nullptr,0)) {
+            wchar_t exe[MAX_PATH]{};GetModuleFileNameW(nullptr,exe,MAX_PATH);
+            pix=LoadLibraryW((fs::path(exe).parent_path()/L"WinPixEventRuntime.dll").c_str());
+            if(!pix) throw std::runtime_error("PIX runtime missing for profiling markers");
+            beginMarker=reinterpret_cast<BeginMarker>(GetProcAddress(pix,"PIXBeginEventOnCommandList"));
+            endMarker=reinterpret_cast<EndMarker>(GetProcAddress(pix,"PIXEndEventOnCommandList"));
+            if(!beginMarker || !endMarker) throw std::runtime_error("PIX runtime marker exports missing");
+        }
         if(data.size()<16 || data.size()>65536) throw std::runtime_error("Invalid constants size");
         float dimensions[2]{};memcpy(dimensions,data.data(),sizeof(dimensions));width=UINT(dimensions[0]);height=UINT(dimensions[1]);
         if(width<64 || height<64 || width>8192 || height>8192) throw std::runtime_error("Invalid dimensions");
@@ -103,7 +123,7 @@ struct Probe {
         check(device->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&cpuDescriptors)),"Create CPU descriptors");stride=device->GetDescriptorHandleIncrementSize(hd.Type);
         D3D12_DESCRIPTOR_RANGE ranges[2]{};
         ranges[0].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_SRV;ranges[0].NumDescriptors=6;
-        ranges[1].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_UAV;ranges[1].NumDescriptors=6;
+        ranges[1].RangeType=D3D12_DESCRIPTOR_RANGE_TYPE_UAV;ranges[1].NumDescriptors=7;
         D3D12_ROOT_PARAMETER parameters[3]{};parameters[0].ParameterType=D3D12_ROOT_PARAMETER_TYPE_CBV;parameters[0].Descriptor.ShaderRegister=0;
         for(int i=0;i<2;i++) {parameters[i+1].ParameterType=D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;parameters[i+1].DescriptorTable={1,&ranges[i]};}
         D3D12_ROOT_SIGNATURE_DESC rd{};rd.NumParameters=3;rd.pParameters=parameters;
@@ -114,6 +134,7 @@ struct Probe {
             auto bytes=read(shaderDirectory/(std::string(names[i])+".dxil"));
             D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};pd.pRootSignature=root.Get();pd.CS={bytes.data(),bytes.size()};
             check(device->CreateComputePipelineState(&pd,IID_PPV_ARGS(&pipelines[i])),names[i]);
+            const std::wstring label(names[i],names[i]+strlen(names[i]));pipelines[i]->SetName(label.c_str());
         }
         if(fs::exists(shaderDirectory/"packetRays.dxil")) {
             auto bytes=read(shaderDirectory/"packetRays.dxil");D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
@@ -124,6 +145,24 @@ struct Probe {
             auto bytes=read(shaderDirectory/"cachedRays.dxil");D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
             pd.pRootSignature=root.Get();pd.CS={bytes.data(),bytes.size()};
             check(device->CreateComputePipelineState(&pd,IID_PPV_ARGS(&pipelines[7])),"cachedRays");
+        }
+        if(fs::exists(shaderDirectory/"prefixCones.dxil")) {
+            auto bytes=read(shaderDirectory/"prefixCones.dxil");D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
+            pd.pRootSignature=root.Get();pd.CS={bytes.data(),bytes.size()};
+            check(device->CreateComputePipelineState(&pd,IID_PPV_ARGS(&conePipeline)),"prefixCones");
+        }
+        if(fs::exists(shaderDirectory/"persistRays.dxil")) {
+            auto bytes=read(shaderDirectory/"persistRays.dxil");D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
+            pd.pRootSignature=root.Get();pd.CS={bytes.data(),bytes.size()};
+            check(device->CreateComputePipelineState(&pd,IID_PPV_ARGS(&persistentPipeline)),"persistRays");
+            char workers[32]{};if(GetEnvironmentVariableA("AURORA_PROBE_WORKERS",workers,sizeof(workers))) persistentWorkers=std::max(64,atoi(workers));
+        }
+        for(int level=0;level<4;level++) {
+            auto path=shaderDirectory/("cone"+std::to_string(16>>level)+".dxil");
+            if(!fs::exists(path)) break;
+            auto bytes=read(path);D3D12_COMPUTE_PIPELINE_STATE_DESC pd{};
+            pd.pRootSignature=root.Get();pd.CS={bytes.data(),bytes.size()};
+            check(device->CreateComputePipelineState(&pd,IID_PPV_ARGS(&conePyramid[level])),"cone pyramid");
         }
         D3D12_INDIRECT_ARGUMENT_DESC argument{};argument.Type=D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;
         D3D12_COMMAND_SIGNATURE_DESC signature{};signature.ByteStride=12;signature.NumArgumentDescs=1;signature.pArgumentDescs=&argument;
@@ -148,6 +187,25 @@ struct Probe {
             device->CreateUnorderedAccessView(output.object.Get(),nullptr,&u,cpu(base));
             uav(base+1,rays[i],capacity,48);uav(base+2,args,8);uav(base+3,count,1);uav(base+4,buckets,bucketCount);uav(base+5,refinement,capacity,16);
         }
+        if(conePipeline) {
+            D3D12_RESOURCE_DESC cd=td;cd.Width=(width+15)/16;cd.Height=(height+15)/16;cd.DepthOrArraySize=384;cd.Format=DXGI_FORMAT_R32_FLOAT;
+            coneLimits.state=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            check(device->CreateCommittedResource(&hp,D3D12_HEAP_FLAG_NONE,&cd,coneLimits.state,nullptr,IID_PPV_ARGS(&coneLimits.object)),"Create prefix map");
+            D3D12_SHADER_RESOURCE_VIEW_DESC sd{};sd.Format=cd.Format;sd.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            sd.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2DARRAY;sd.Texture2DArray.MipLevels=1;sd.Texture2DArray.ArraySize=384;
+            D3D12_UNORDERED_ACCESS_VIEW_DESC ud{};ud.Format=cd.Format;ud.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2DARRAY;ud.Texture2DArray.ArraySize=384;
+            for(UINT i=0;i<2;i++) {device->CreateShaderResourceView(coneLimits.object.Get(),&sd,cpu(i*16+5));device->CreateUnorderedAccessView(coneLimits.object.Get(),nullptr,&ud,cpu(32+i*16+6));}
+        }
+        if(conePyramid[0]) {
+            if(conePipeline) throw std::runtime_error("Prefix and pyramid experiments cannot share u6");
+            D3D12_RESOURCE_DESC cd=td;cd.Width=(width+1)/2;cd.Height=(height+1)/2;cd.DepthOrArraySize=4;cd.Format=DXGI_FORMAT_R32_FLOAT;
+            pyramid.state=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            check(device->CreateCommittedResource(&hp,D3D12_HEAP_FLAG_NONE,&cd,pyramid.state,nullptr,IID_PPV_ARGS(&pyramid.object)),"Create cone pyramid");
+            D3D12_UNORDERED_ACCESS_VIEW_DESC ud{};ud.Format=cd.Format;ud.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2DARRAY;ud.Texture2DArray.ArraySize=4;
+            for(UINT i=0;i<2;i++) device->CreateUnorderedAccessView(pyramid.object.Get(),nullptr,&ud,cpu(32+i*16+6));
+            device->GetCopyableFootprints(&cd,0,4,0,pyramidFootprints.data(),nullptr,nullptr,&pyramidBytes);
+            pyramidReadback=buffer(pyramidBytes,D3D12_HEAP_TYPE_READBACK,false);
+        }
         D3D12_QUERY_HEAP_DESC query{};query.Type=D3D12_QUERY_HEAP_TYPE_TIMESTAMP;query.Count=2;
         check(device->CreateQueryHeap(&query,IID_PPV_ARGS(&queries)),"Create timer queries");timestamps=buffer(16,D3D12_HEAP_TYPE_READBACK,false);
         device->GetCopyableFootprints(&td,0,1,0,&footprint,nullptr,nullptr,&copyBytes);depthReadback=buffer(copyBytes,D3D12_HEAP_TYPE_READBACK,false);
@@ -157,10 +215,20 @@ struct Probe {
         ID3D12DescriptorHeap* heaps[]={descriptors.Get()};list->SetDescriptorHeaps(1,heaps);list->SetComputeRootSignature(root.Get());
         list->SetComputeRootConstantBufferView(0,constants.object->GetGPUVirtualAddress());
         list->EndQuery(queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0);
+        if(conePyramid[0]) transition(pyramid,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        for(int level=0;level<4 && conePyramid[level];level++) {
+            int tile=16>>level;begin("Cone"+std::to_string(tile));bind(0,0,0);list->SetPipelineState(conePyramid[level].Get());
+            list->Dispatch((width+tile*8-1)/(tile*8),(height+tile*8-1)/(tile*8),1);barrier();end();
+        }
+        if(conePipeline) {
+            transition(coneLimits,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);bind(0,0,0);list->SetPipelineState(conePipeline.Get());
+            list->Dispatch((width+127)/128,(height+127)/128,1);barrier();transition(coneLimits,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }
         transition(output,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);transition(rays[0],D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         clear(35,count);clear(36,buckets);barrier();
-        bind(0,0,0);list->Dispatch((width+7)/8,(height+7)/8,1);barrier();
+        begin("Initial64");bind(0,0,0);list->Dispatch((width+7)/8,(height+7)/8,1);barrier();end();
         for(int batch=1;batch<33;batch++) {
+            begin("Queue"+std::to_string(batch));
             transition(count,D3D12_RESOURCE_STATE_COPY_SOURCE);transition(args,D3D12_RESOURCE_STATE_COPY_DEST);
             list->CopyBufferRegion(args.object.Get(),12,count.object.Get(),0,4);
             transition(count,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);transition(args,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -177,12 +245,16 @@ struct Probe {
                 transition(args,D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT|D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             }
             transition(rays[1],D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);transition(rays[0],D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            bool packet=pipelines[6] && batch>=4 && batch<32;
+            bool packet=pipelines[6] && batch>=cacheStart && batch<32;
             bool cached=pipelines[7] && batch>=cacheStart && batch<32;
             clear(35,count);clear(36,buckets);barrier();bind(packet?6:cached?7:batch==32?2:1,1,0);
-            list->ExecuteIndirect(indirect.Get(),1,args.object.Get(),packet?16:0,nullptr,0);barrier();
+            end();begin("Trace"+std::to_string(batch));
+            if(persistentPipeline) {
+                list->SetPipelineState(persistentPipeline.Get());list->Dispatch(persistentWorkers/64,1,1);barrier();end();break;
+            }
+            list->ExecuteIndirect(indirect.Get(),1,args.object.Get(),packet?16:0,nullptr,0);barrier();end();
         }
-        bind(5,0,0);list->Dispatch((width+7)/8,(height+7)/8,1);barrier();
+        begin("Refine");bind(5,0,0);list->Dispatch((width+7)/8,(height+7)/8,1);barrier();end();
         list->EndQuery(queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1);
         list->ResolveQueryData(queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0,2,timestamps.object.Get(),0);
         if(capture) {
@@ -190,6 +262,14 @@ struct Probe {
             D3D12_TEXTURE_COPY_LOCATION from{};from.pResource=output.object.Get();from.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             D3D12_TEXTURE_COPY_LOCATION to{};to.pResource=depthReadback.object.Get();to.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;to.PlacedFootprint=footprint;
             list->CopyTextureRegion(&to,0,0,0,&from,nullptr);
+            if(conePyramid[0]) {
+                transition(pyramid,D3D12_RESOURCE_STATE_COPY_SOURCE);
+                for(UINT level=0;level<4 && conePyramid[level];level++) {
+                    from.pResource=pyramid.object.Get();from.SubresourceIndex=level;
+                    to.pResource=pyramidReadback.object.Get();to.PlacedFootprint=pyramidFootprints[level];
+                    list->CopyTextureRegion(&to,0,0,0,&from,nullptr);
+                }
+            }
         }
         check(list->Close(),"Close frame");ID3D12CommandList* submitted[]={list.Get()};queue->ExecuteCommandLists(1,submitted);
         check(queue->Signal(fence.Get(),++serial),"Signal frame");check(fence->SetEventOnCompletion(serial,event),"Wait for frame");
@@ -227,14 +307,27 @@ struct Probe {
         for(UINT y=0;y<height;y++) memcpy(data.data()+size_t(y)*width*2,mapped+footprint.Offset+size_t(y)*footprint.Footprint.RowPitch,size_t(width)*8);
         D3D12_RANGE empty{0,0};depthReadback.object->Unmap(0,&empty);return data;
     }
+    void saveCones() {
+        if(!conePyramid[0]) return;
+        unsigned char* mapped=nullptr;D3D12_RANGE range{0,SIZE_T(pyramidBytes)};
+        check(pyramidReadback.object->Map(0,&range,reinterpret_cast<void**>(&mapped)),"Read cone bounds");
+        for(UINT level=0;level<4 && conePyramid[level];level++) {
+            UINT tile=16>>level,w=(width+tile-1)/tile,h=(height+tile-1)/tile;
+            auto fp=pyramidFootprints[level];std::ofstream f("cone-"+std::to_string(tile)+".bin",std::ios::binary);
+            for(UINT y=0;y<h;y++) f.write(reinterpret_cast<const char*>(mapped+fp.Offset+SIZE_T(y)*fp.Footprint.RowPitch),w*sizeof(float));
+        }
+        D3D12_RANGE empty{0,0};pyramidReadback.object->Unmap(0,&empty);
+    }
 };
 int main(int argc,char** argv) {
     try {
         if(argc!=4) throw std::runtime_error("Usage: AuroraDX12Probe shader-directory constants.bin reference-depth.bin");
         Probe probe;probe.initialize(argv[1],read(argv[2]));
+        wchar_t duration[32]{};int measured=12;
+        if(GetEnvironmentVariableW(L"AURORA_PROBE_FRAMES",duration,32)) measured=std::clamp(_wtoi(duration),12,10000);
         double sum=0,maximum=0;
-        for(int frame=-4;frame<12;frame++) {double ms=probe.frame(frame==11);if(frame>=0) {sum+=ms;maximum=std::max(maximum,ms);}}
-        auto data=probe.depths();auto raw=read(argv[3]);if(raw.size()!=data.size()*sizeof(float)) throw std::runtime_error("Depth image size mismatch");
+        for(int frame=-4;frame<measured;frame++) {double ms=probe.frame(frame==measured-1);if(frame>=0) {sum+=ms;maximum=std::max(maximum,ms);}}
+        probe.saveCones();auto data=probe.depths();auto raw=read(argv[3]);if(raw.size()!=data.size()*sizeof(float)) throw std::runtime_error("Depth image size mismatch");
         std::vector<float> expected(data.size());memcpy(expected.data(),raw.data(),raw.size());
         size_t statuses=0,depths=0,unfinished=0;double maxError=0;
         for(size_t i=0;i<data.size();i+=2) {
@@ -242,7 +335,7 @@ int main(int argc,char** argv) {
             if(data[i+1]>0 && expected[i+1]>0) {depths+=data[i]!=expected[i];maxError=std::max(maxError,std::abs(double(data[i])-expected[i]));}
         }
         std::ofstream capture("dx12-depth.bin",std::ios::binary);capture.write(reinterpret_cast<const char*>(data.data()),std::streamsize(data.size()*sizeof(float)));
-        std::cout<<std::setprecision(9)<<"{\"width\":"<<probe.width<<",\"height\":"<<probe.height<<",\"trace_refine_ms\":"<<sum/12<<",\"max_ms\":"<<maximum
+        std::cout<<std::setprecision(9)<<"{\"width\":"<<probe.width<<",\"height\":"<<probe.height<<",\"trace_refine_ms\":"<<sum/measured<<",\"max_ms\":"<<maximum
             <<",\"status_changes\":"<<statuses<<",\"hit_depth_changes\":"<<depths<<",\"max_log_depth_error\":"<<maxError<<",\"unfinished\":"<<unfinished<<"}\n";
         return statuses || depths ? 2:0;
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}

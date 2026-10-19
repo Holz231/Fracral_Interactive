@@ -1,0 +1,4 @@
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\late-affine-tail\fractal.hlsl(246,20): warning X3078: 'j': loop control variable conflicts with a previous declaration in the outer scope; most recent declaration will be used
+compilation object save succeeded; see C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\late-affine-tail\shaders\cachedRays.dxil
+C:\Users\marce\Desktop\Fraktals-Weiter\validation\experiments\late-affine-tail\fractal.hlsl(520,5): warning X4000: use of potentially uninitialized variable (marchJob)
+
