@@ -1,10 +1,10 @@
-Start testing: Oct 12 12:58 Mitteleuropäische Sommerzeit
+Start testing: Oct 16 01:01 Mitteleuropäische Sommerzeit
 ----------------------------------------------------------
 1/2 Testing: citadel_continuity
 1/2 Test: citadel_continuity
 Command: "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/Release/CitadelTests.exe"
 Directory: C:/Users/marce/Desktop/Fraktals-Weiter/build-copy
-"citadel_continuity" start time: Oct 12 12:58 Mitteleuropäische Sommerzeit
+"citadel_continuity" start time: Oct 16 01:01 Mitteleuropäische Sommerzeit
 Output:
 ----------------------------------------------------------
 depth 85.0018 iterations 181 maximum relative field error 4.84765e-05 drift 1.8345e-05
@@ -20,10 +20,10 @@ target 7 reached fraction 0.999994 zoom 5.47302
 target 8 reached fraction 0.999937 zoom 4.26249
 PASS: shared field, fixed targets, deep zoom, reverse flight, 1536 exterior bounds and 34797 composed-prefix checks
 <end of output>
-Test time =   2.14 sec
+Test time =   2.16 sec
 ----------------------------------------------------------
 Test Passed.
-"citadel_continuity" end time: Oct 12 12:58 Mitteleuropäische Sommerzeit
+"citadel_continuity" end time: Oct 16 01:01 Mitteleuropäische Sommerzeit
 "citadel_continuity" time elapsed: 00:00:02
 ----------------------------------------------------------
 
@@ -31,16 +31,16 @@ Test Passed.
 2/2 Test: fractal_geometry
 Command: "C:/Users/marce/Desktop/Fraktals-Weiter/build-copy/Release/FractalTests.exe"
 Directory: C:/Users/marce/Desktop/Fraktals-Weiter/build-copy
-"fractal_geometry" start time: Oct 12 12:58 Mitteleuropäische Sommerzeit
+"fractal_geometry" start time: Oct 16 01:01 Mitteleuropäische Sommerzeit
 Output:
 ----------------------------------------------------------
-PASS: 19200 exact-distance comparisons, 240 continuous zoom checks, 46 passages; deep zoom 10^16.2982. CPU query speedup: 3.88587x.
+PASS: 19200 exact-distance comparisons, 240 continuous zoom checks, 46 passages; deep zoom 10^16.2982. CPU query speedup: 3.89282x.
 <end of output>
 Test time =   0.10 sec
 ----------------------------------------------------------
 Test Passed.
-"fractal_geometry" end time: Oct 12 12:58 Mitteleuropäische Sommerzeit
+"fractal_geometry" end time: Oct 16 01:01 Mitteleuropäische Sommerzeit
 "fractal_geometry" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Oct 12 12:58 Mitteleuropäische Sommerzeit
+End testing: Oct 16 01:01 Mitteleuropäische Sommerzeit

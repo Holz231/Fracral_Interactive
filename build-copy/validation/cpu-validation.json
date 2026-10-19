@@ -7,7 +7,7 @@
   "deep_coordinate_changes": 58,
   "max_parent_cavities": 8,
   "queries": 360000,
-  "baseline_cpu_ms": 27.1405,
-  "optimized_cpu_ms": 6.9844,
-  "cpu_speedup": 3.8859
+  "baseline_cpu_ms": 26.1753,
+  "optimized_cpu_ms": 6.7240,
+  "cpu_speedup": 3.8928
 }
