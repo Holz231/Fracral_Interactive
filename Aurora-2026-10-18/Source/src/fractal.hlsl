@@ -383,10 +383,14 @@ float3 shade(float3 rd,float logTravel,float pixelWidth) {
     float3 light=normalize(float3(-.55,.8,-.4));float diffuse=saturate(dot(n,light));
     float shadow=1;
     #if SHADOW_STEPS > 0
-    float t=max(h*6,.008);
-    [loop] for(int j=0;j<SHADOW_STEPS;j++) {
-        float dist=scene(rd+n*h*3+light*t,logTravel);
-        shadow=min(shadow,saturate(12*dist/t));t+=max(dist,t*.7);
+    // Facing away from the light, the shadow only scales a highlight below 1e-5:
+    // skip its march there (about half of the surface pixels).
+    if(diffuse>0 || dot(n,normalize(light-rd))>.6) {
+        float t=max(h*6,.008);
+        [loop] for(int j=0;j<SHADOW_STEPS;j++) {
+            float dist=scene(rd+n*h*3+light*t,logTravel);
+            shadow=min(shadow,saturate(12*dist/t));t+=max(dist,t*.7);
+        }
     }
     #endif
     float3 material=stone(n,ao);

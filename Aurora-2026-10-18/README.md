@@ -57,6 +57,12 @@ Bewegung von 10.728 auf 787 Pixel pro Bild. Vergleich: `validation/images/taa-co
    leer. Das spart in den schweren Ansichten zusammen 1–5 % GPU-Zeit, in einzelnen
    Ansichten bis 13 %, am meisten bei kleinerer Auflösung, also unter dem
    Sicherheitsnetz.
+10. **Schatten nur, wo sie sichtbar sind.** Flächen, die vom Licht wegzeigen, bekommen
+    weder direktes Licht noch einen sichtbaren Glanzpunkt; ihr Schatten ist unsichtbar.
+    Dort entfällt jetzt die Schattenrechnung. Das betrifft etwa die Hälfte der
+    Flächenpixel. Weil Licht- und Schattenseite im Fraktal fast von Pixel zu Pixel
+    wechseln und die GPU immer 32 Pixel im Gleichschritt rechnet, spart das trotzdem nur
+    0,7–2,2 % GPU-Zeit.
 
 Gleich geblieben sind Geometrie, Julia-Konstante, Iterationsgrenzen, das Budget von
 8192 Schritten, Sichtweite, Beleuchtungsmodell und die Pixelgrenzen der Stufen
@@ -184,6 +190,12 @@ Sicherheitsnetz rechnet dafür etwas höher: Ultra im 4K-Vollbild in deiner lang
 Preview-Aufnahme im Mittel 68 % statt 64 % pro Achse, in der langsamsten Aufnahme aus
 dem Hauptordner 60 % statt 59 %, Balanced im Fenster dort 97 % statt 95 %.
 
+Schatten nur, wo sie sichtbar sind (Punkt 10): reine GPU-Zeit aller 14 Ansichten,
+abwechselnd in drei Runden gemessen, jeweils der beste Wert, in Klammern die sechs
+schwersten Ansichten: Balanced 1980 × 1058 −0,7 % (−0,8 %), Ultra 1980 × 1058 −2,2 %
+(−2,8 %), Ultra im 4K-Vollbild bei voller Auflösung −1,3 % (−1,2 %). Keine Ansicht wurde
+um mehr als 0,5 % langsamer, das liegt im Messrauschen.
+
 Außerdem blieben im alten Ultra einzelne Strahlen nach 8192 Schritten unfertig und
 ergaben Fehlpixel: über die 14 Ansichten 3.904 Pixel bei 1980 × 1058 und 13.898 im
 4K-Vollbild. Im neuen Ultra sind es 0.
@@ -239,6 +251,11 @@ Preview-Aufnahme mit 67,0 % statt 67,6 %.
   `--field-regression` liefern dieselben Werte wie vorher; Balanced und Ultra im Fenster
   1980 × 1058 (mit und ohne Kantenglättung) rendern auf allen 14 Ansichten pixelgleich
   wie vorher.
+- Nach Punkt 10: CTest 2/2; `--benchmark` bestanden, `--field-regression` unverändert,
+  `--regression` bestanden (zwei Bildwerte weichen in der sechsten Stelle ab). Ohne
+  Kantenglättung weichen 0,01 % der Pixel um eine Helligkeitsstufe ab (dort fehlt ein
+  Glanzanteil unter 1/100.000). Mit Kantenglättung pflanzt sich das vereinzelt fort: über
+  die 14 Ansichten in Ultra 4K 52.498 Pixel (0,05 %), davon 5 um mehr als 16 Stufen.
 
 ## Bekannte Grenzen
 
