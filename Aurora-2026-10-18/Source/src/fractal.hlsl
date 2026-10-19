@@ -919,32 +919,39 @@ float3 sampleHistory(float2 position) {
 }
 float4 temporalMain(VertexOut input):SV_Target {
     // Output pixel in normalized screen coordinates, then in traced samples.
-    // The traced frame may be smaller than the output (dynamic resolution);
-    // its samples sit at i+.5+jitter.
+    // The traced frame may be smaller than the output (pixel cap, dynamic
+    // resolution); its samples sit at i+.5+jitter.
     float2 o=input.position.xy,screen=(o*2-outputInfo.xy)/outputInfo.y;
     float2 traced=(screen*renderInfo.y+renderInfo.xy)*.5,grid=traced-.5-frameJitter.xy;
     int2 p=int2(floor(grid+.5)),limit=int2(renderInfo.xy)-1;
-    float3 current=0,m1=0,m2=0,lo=1e9,hi=-1e9;float weights=0;
+    // Temporal upscaling: when the output has more pixels than the traced frame,
+    // the current frame enters through a kernel sized in output pixels and output
+    // pixels far from this frame's samples keep more history, so the jittered
+    // samples of successive frames add up to output-resolution detail. Pixels
+    // without usable history take the soft kernel sized in traced samples.
+    float upscale=max(1,outputInfo.y/renderInfo.y),nearestWeight=0;
+    float3 current=0,soft=0,m1=0,m2=0,lo=1e9,hi=-1e9;float weights=0,softWeights=0;
     float nearest=1e30;bool surface=false;
     [unroll] for(int y=-1;y<=1;y++) [unroll] for(int x=-1;x<=1;x++) {
         int2 q=clamp(p+int2(x,y),0,limit);
         float3 c=toYCoCg(frameTexture.Load(int3(q,0)).rgb);
-        float2 offset=float2(q)-grid;float w=exp(-2.29*dot(offset,offset));
-        current+=c*w;weights+=w;
+        float2 offset=float2(q)-grid;float s=exp(-2.29*dot(offset,offset));
+        float w=upscale>1.01?exp(-2.29*dot(offset,offset)*upscale*upscale):s;
+        soft+=c*s;softWeights+=s;current+=c*w;weights+=w;nearestWeight=max(nearestWeight,w);
         m1+=c;m2+=c*c;lo=min(lo,c);hi=max(hi,c);
         float2 ray=rayImage.Load(int4(q,0,0));
         // Reproject with the closest surface around the pixel so edges move
         // with the foreground; escaped rays only rotate.
         if(ray.y!=0 && ray.x<nearest) {nearest=ray.x;surface=true;}
     }
-    current/=max(weights,1e-6);
+    current/=max(weights,1e-6);soft/=max(softWeights,1e-6);
     float3 mean=m1/9,sigma=sqrt(max(0,m2/9-mean*mean));
     float3 boxLo=max(lo,mean-sigma*TAA_SIGMA),boxHi=min(hi,mean+sigma*TAA_SIGMA);
     float2 uv=float2(screen.x,-screen.y);
     float3 dir=normalize(viewRight.xyz*uv.x+viewUp.xyz*uv.y+viewForward.xyz*1.85);
     float3 seen=surface?dir*exp2(min(nearest,100))-prevCamera.xyz:dir;
     float depth=dot(seen,prevForward.xyz);
-    float3 result=current;
+    float3 result=soft;
     if(temporalInfo.x>0 && depth>0) {
         float2 projected=float2(dot(seen,prevRight.xyz),dot(seen,prevUp.xyz))*(1.85/depth);
         float2 previous=float2(projected.x*outputInfo.y+outputInfo.x,outputInfo.y-projected.y*outputInfo.y)*.5;
@@ -955,6 +962,7 @@ float4 temporalMain(VertexOut input):SV_Target {
             if(outside>1) history=center+offset/outside;
             // Luminance-weighted blend suppresses single bright or dark samples.
             float a=temporalInfo.y/(1+current.x),b=(1-temporalInfo.y)/(1+history.x);
+            if(upscale>1.01) a*=max(nearestWeight,.5);
             result=(current*a+history*b)/(a+b);
         }
     }

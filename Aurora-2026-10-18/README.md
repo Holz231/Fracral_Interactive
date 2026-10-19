@@ -62,6 +62,25 @@ Gleich geblieben sind Geometrie, Julia-Konstante, Iterationsgrenzen, das Budget 
 8192 Schritten, Sichtweite, Beleuchtungsmodell und die Pixelgrenzen der Stufen
 Performance, Balanced und Ultra.
 
+## Was schärfer ist
+
+**4K aus mehreren Bildern (temporales Hochskalieren, 19.10.2026).** Im 4K-Vollbild
+rechnet Aurora nicht jedes Pixel einzeln: Balanced rechnet 1932 × 1086 Pixel, Ultra
+2980 × 1676 und unter dem Sicherheitsnetz weniger. Bisher sammelte die Kantenglättung
+nur in dieser gerechneten Größe, und das Ergebnis wurde auf 4K aufgezogen. Jetzt
+sammelt sie in voller Fenstergröße: Die leicht versetzten Abtastpunkte
+aufeinanderfolgender Bilder setzen sich zu echten 4K-Details zusammen (dasselbe Prinzip
+wie DLSS oder FSR, ohne KI). Balanced zeigt dadurch im 4K-Vollbild etwa doppelt so viel
+Feinzeichnung wie vorher, Ultra etwa die Hälfte mehr (Messwerte unten). Wo noch kein
+Vorbild existiert, also im ersten Bild nach F, K oder dem Start und in Bereichen, die
+beim Drehen neu ins Bild kommen, wird das gerechnete Bild weich aufgezogen wie bisher.
+Der Fraktal-Teil rechnet gleich viel; nur die Kantenglättung läuft auf allen Pixeln des
+Fensters.
+
+Im Fenster mit 1980 × 1058 ändert sich bei voller Auflösung nichts (pixelgleich). Senkt
+dort das Sicherheitsnetz die Auflösung, wird das Bild etwas schärfer zusammengesetzt als
+vorher. Performance (1 Megapixel) profitiert auch im Fenster.
+
 ## Messwerte
 
 RTX 4070 SUPER, 1980 × 1058, Balanced. Flug über 600 Bilder mit echter Ausgabe
@@ -169,6 +188,33 @@ Außerdem blieben im alten Ultra einzelne Strahlen nach 8192 Schritten unfertig 
 ergaben Fehlpixel: über die 14 Ansichten 3.904 Pixel bei 1980 × 1058 und 13.898 im
 4K-Vollbild. Im neuen Ultra sind es 0.
 
+### Schärfe im 4K-Vollbild
+
+Flüge mit festen Zeitschritten in 3840 × 2160 ohne Sicherheitsnetz, alle 30 Bilder
+verglichen mit einem echten 4K-Bild, in dem jedes Pixel gerechnet ist. Feinzeichnung =
+Kantenenergie im Verhältnis zum echten 4K-Bild; dB = Abstand zum echten 4K-Bild (PSNR,
+höher heißt näher dran). Schneller Flug: Mittel über vier Strecken (zwei deiner Aufnahmen
+aus dem Hauptordner, Ecke, Innenraum); die übrigen Zeilen über zwei Strecken:
+
+| Flug | Balanced vorher | Balanced jetzt | Ultra vorher | Ultra jetzt |
+|---|---|---|---|---|
+| schnell (Tempo 3,8) | 27 % · 22,6 dB | 53 % · 22,7 dB | 55 % · 29,9 dB | 79 % · 30,1 dB |
+| langsam (Tempo 0,15) | 27 % · 23,2 dB | 52 % · 23,7 dB | 53 % · 30,0 dB | 81 % · 31,2 dB |
+| Stillstand | 26 % · 22,8 dB | 53 % · 23,2 dB | 51 % · 29,3 dB | 85 % · 30,3 dB |
+| Kurve (41° pro Sekunde) | 27 % · 24,0 dB | 53 % · 24,2 dB | | |
+| rückwärts | 27 % · 23,3 dB | 54 % · 23,9 dB | | |
+
+Das echte 4K-Bild rechnet etwa viermal (Balanced) bzw. 1,7-mal (Ultra) so viele Pixel.
+Vergleich: `validation/images/taau-4k-vergleich.png`.
+
+Flug mit echter Ausgabe (600 Bilder, V-Sync, sechs Strecken, je zwei Durchläufe), ab dem
+25. Bild: Ultra und Balanced im 4K-Vollbild sowie Balanced im Fenster mit 1980 × 1058
+weiterhin 60 FPS ohne Bild über 20 ms. Das Hochskalieren kostet in Balanced 4K
+0,3–0,4 ms GPU-Zeit je Bild. Das Sicherheitsnetz rechnet dafür minimal niedriger:
+Balanced 4K in deiner langsamsten Aufnahme aus dem Hauptordner im Mittel mit 94,5 % statt
+96,1 % pro Achse, Ultra 4K dort mit 59,6 % statt 60,2 % und in der langsamsten
+Preview-Aufnahme mit 67,0 % statt 67,6 %.
+
 ## Prüfungen
 
 - CTest 2/2 (Geometrie, Kontinuität).
@@ -189,6 +235,10 @@ ergaben Fehlpixel: über die 14 Ansichten 3.904 Pixel bei 1980 × 1058 und 13.89
   weichen nur an sehr flach gesehenen Wänden in einzelnen Pixeln ab, über die 14
   Ansichten im Mittel um weniger als 0,06 Helligkeitsstufen (mit Kantenglättung
   0,03); unfertige Pixel weiterhin 0.
+- Nach dem 4K-Hochskalieren: CTest 2/2; `--benchmark` bestanden, `--regression` und
+  `--field-regression` liefern dieselben Werte wie vorher; Balanced und Ultra im Fenster
+  1980 × 1058 (mit und ohne Kantenglättung) rendern auf allen 14 Ansichten pixelgleich
+  wie vorher.
 
 ## Bekannte Grenzen
 
@@ -205,6 +255,11 @@ ergaben Fehlpixel: über die 14 Ansichten 3.904 Pixel bei 1980 × 1058 und 13.89
   unabhängig von der Grafiklast und war in der vorigen Version genauso, auch bei Balanced.
 - Ein plötzlicher Lastsprung, auch durch andere Programme auf der GPU, kann ein
   einzelnes Bild verzögern, bis die Auflösung nach etwa drei Bildern nachgeregelt ist.
+- Das 4K-Hochskalieren braucht nach F, K oder dem Start und für Bereiche, die neu ins
+  Bild kommen, etwa 15 Bilder (eine Viertelsekunde) bis zur vollen Schärfe; das erste
+  Bild ist mindestens so scharf wie vorher. Im Stillstand ist die Restunruhe der
+  Kantenglättung etwas höher als vorher, etwa wie beim echten 4K-Bild (im Mittel unter
+  einer Helligkeitsstufe pro Bild).
 
 ## Neu bauen
 
@@ -218,7 +273,8 @@ ctest --test-dir build -C Release --output-on-failure
 
 Diagnose (Umgebungsvariablen): `AURORA_TEMPORAL=0` schaltet die Kantenglättung ab
 (Ultra rechnet dann nur einen Abtastpunkt pro Pixel), `AURORA_DRS=0` das
-Sicherheitsnetz, `AURORA_FRAME_BUDGET` setzt das GPU-Budget in ms.
+Sicherheitsnetz, `AURORA_FRAME_BUDGET` setzt das GPU-Budget in ms, `AURORA_TAAU=0`
+lässt die Kantenglättung wieder nur in der gerechneten Größe sammeln (zum Vergleich).
 Messmodi: `--bench-views`, `--fly-views`, `--diag-views` (siehe `validation/tools`).
 `AURORA_BENCH_QUALITY=2` wählt in `--bench-views`, `--fly-views` und
 `--flight-profile` die Stufe Ultra.

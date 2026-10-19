@@ -45,13 +45,15 @@ class Renderer {
     ComPtr<ID3D11RenderTargetView> backTarget,sceneTarget;
     ComPtr<ID3D11ShaderResourceView> sceneView;
     ComPtr<ID3D11Buffer> constants,foldConstants,frameConstants;
-    // Temporal anti-aliasing: two history targets at render resolution.
+    // Temporal anti-aliasing: two history targets at window resolution, so the
+    // jittered samples of successive frames add up to output detail even when the
+    // traced frame is smaller (temporal upscaling; AURORA_TAAU=0: render resolution).
     std::array<ComPtr<ID3D11Texture2D>,2> historyTextures;
     std::array<ComPtr<ID3D11RenderTargetView>,2> historyTargets;
     std::array<ComPtr<ID3D11ShaderResourceView>,2> historyViews;
     ComPtr<ID3D11PixelShader> temporalShader,presentTemporalShader;
-    int historyIndex=0,jitterIndex=0;
-    bool historyValid=false,frameTemporal=false;
+    int historyIndex=0,jitterIndex=0,historyWidth=0,historyHeight=0;
+    bool historyValid=false,frameTemporal=false,temporalUpscale=true;
     Vec3 previousRight{},previousUp{},previousForward{};
     double previousUnit=0;
     float previousJitterX=0,previousJitterY=0;

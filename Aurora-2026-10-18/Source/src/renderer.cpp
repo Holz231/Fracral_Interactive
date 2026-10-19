@@ -160,6 +160,7 @@ void Renderer::initialize(HWND hwnd,int w,int h,bool paced) {
         if(GetEnvironmentVariableW(L"AURORA_DRS",value,16)) dynamicResolution=_wtoi(value)!=0;
         if(GetEnvironmentVariableW(L"AURORA_FRAME_BUDGET",value,16)) frameBudgetMs=std::clamp(_wtof(value),4.,40.);
         if(GetEnvironmentVariableW(L"AURORA_DRS_MIN",value,16)) minimumScale=std::clamp(_wtof(value),.5,1.);
+        if(GetEnvironmentVariableW(L"AURORA_TAAU",value,16)) temporalUpscale=_wtoi(value)!=0;
     }
     D3D11_SAMPLER_DESC sd{};sd.Filter=D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     sd.AddressU=sd.AddressV=sd.AddressW=D3D11_TEXTURE_ADDRESS_CLAMP;sd.MaxLOD=D3D11_FLOAT32_MAX;
@@ -201,6 +202,7 @@ void Renderer::resize(int w,int h) {
     double cap=std::min(1.,std::sqrt(profiles[quality].pixels/(double(w)*h)));
     resolutionScale=cap;
     makeSceneTarget(std::max(64,int(width*resolutionScale)),std::max(64,int(height*resolutionScale)));
+    if(temporalUpscale && (historyWidth!=width || historyHeight!=height)) makeHistory();
 }
 void Renderer::makeSceneTarget(int w,int h) {
     w=std::max(64,w&~1);h=std::max(64,h&~1);
@@ -221,9 +223,10 @@ void Renderer::makeSceneTarget(int w,int h) {
     prepareWaveTargets();
 }
 void Renderer::makeHistory() {
+    historyWidth=temporalUpscale?width:renderWidth;historyHeight=temporalUpscale?height:renderHeight;
     for(int i=0;i<2;i++) {
         historyViews[i].Reset();historyTargets[i].Reset();historyTextures[i].Reset();
-        D3D11_TEXTURE2D_DESC d{};d.Width=renderWidth;d.Height=renderHeight;d.MipLevels=1;d.ArraySize=1;
+        D3D11_TEXTURE2D_DESC d{};d.Width=historyWidth;d.Height=historyHeight;d.MipLevels=1;d.ArraySize=1;
         d.Format=DXGI_FORMAT_R16G16B16A16_FLOAT;d.SampleDesc.Count=1;d.Usage=D3D11_USAGE_DEFAULT;
         d.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;
         check(device->CreateTexture2D(&d,nullptr,&historyTextures[i]),"Create temporal history");
@@ -608,7 +611,7 @@ void Renderer::renderFrame(const World& world,const View& view,int palette) {
     frame.prevRight=f(previousRight,0);frame.prevUp=f(previousUp,0);frame.prevForward=f(previousForward,0);
     frame.prevCamera=f(world.cameraMotion*-1.,world.citadel.logUnit-previousUnit);
     frame.temporal={usable?1.f:0.f,temporalBlend,temporalSharpen,0};
-    frame.output={float(renderWidth),float(renderHeight),0,0};
+    frame.output={float(historyWidth),float(historyHeight),0,0};
     D3D11_MAPPED_SUBRESOURCE mapped{};
     check(context->Map(frameConstants.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"Update frame constants");
     memcpy(mapped.pData,&frame,sizeof(frame));context->Unmap(frameConstants.Get(),0);
@@ -628,7 +631,7 @@ void Renderer::temporalPass() {
     context->IASetInputLayout(nullptr);context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     context->VSSetShader(vertex.Get(),nullptr,0);context->PSSetShader(temporalShader.Get(),nullptr,0);
     context->RSSetState(rasterizer.Get());
-    D3D11_VIEWPORT vp{0,0,float(renderWidth),float(renderHeight),0,1};context->RSSetViewports(1,&vp);
+    D3D11_VIEWPORT vp{0,0,float(historyWidth),float(historyHeight),0,1};context->RSSetViewports(1,&vp);
     ID3D11RenderTargetView* output=historyTargets[target].Get();context->OMSetRenderTargets(1,&output,nullptr);
     ID3D11ShaderResourceView* current=sceneView.Get();context->PSSetShaderResources(0,1,&current);
     ID3D11ShaderResourceView* rays=rayView.Get();context->PSSetShaderResources(3,1,&rays);
