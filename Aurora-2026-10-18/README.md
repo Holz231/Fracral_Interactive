@@ -87,6 +87,12 @@ Im Fenster mit 1980 × 1058 ändert sich bei voller Auflösung nichts (pixelglei
 dort das Sicherheitsnetz die Auflösung, wird das Bild etwas schärfer zusammengesetzt als
 vorher. Performance (1 Megapixel) profitiert auch im Fenster.
 
+**Schärfere Standbilder (20.10.2026).** Nach dem Anhalten rechnet Aurora jetzt 48 statt
+12 Bilder weiter (etwa 0,8 Sekunden), bevor es in den Leerlauf geht. Mit dem
+4K-Hochskalieren erreicht das Standbild so 98–99 % der Schärfe, die es nach 63 Bildern
+hätte, statt 80–91 % (Balanced und Ultra in 4K, vier Strecken). Beim Fliegen ändert sich
+nichts.
+
 ## Messwerte
 
 RTX 4070 SUPER, 1980 × 1058, Balanced. Flug über 600 Bilder mit echter Ausgabe
@@ -256,6 +262,9 @@ Preview-Aufnahme mit 67,0 % statt 67,6 %.
   Kantenglättung weichen 0,01 % der Pixel um eine Helligkeitsstufe ab (dort fehlt ein
   Glanzanteil unter 1/100.000). Mit Kantenglättung pflanzt sich das vereinzelt fort: über
   die 14 Ansichten in Ultra 4K 52.498 Pixel (0,05 %), davon 5 um mehr als 16 Stufen.
+- Nach den 48 Standbild-Bildern: CTest 2/2; `--benchmark`, `--regression` und
+  `--field-regression` bestanden mit denselben Werten wie vorher; die Messbilder sind
+  pixelgleich. Die Änderung betrifft nur die Bilder nach dem Anhalten im Fenster.
 
 ## Bekannte Grenzen
 

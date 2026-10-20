@@ -814,7 +814,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
                 }
                 if(quit) break;
                 if(!app.active || IsIconic(window)) {app.renderer.markIdle();settle=0;MsgWaitForMultipleObjectsEx(0,nullptr,INFINITE,QS_ALLINPUT,MWMO_INPUTAVAILABLE);last=Clock::now();stats=last;frames=0;continue;}
-                // A few still frames after stopping let temporal anti-aliasing settle.
+                // Still frames after stopping let temporal anti-aliasing settle. With the
+                // history at window size a still needs about 48 frames for full detail.
                 if(!app.moving() && !app.dirty && settle>0) {settle--;app.dirty=true;}
                 if(!app.moving() && !app.dirty) {app.saveSlowFlight();app.renderer.markIdle();MsgWaitForMultipleObjectsEx(0,nullptr,INFINITE,QS_ALLINPUT,MWMO_INPUTAVAILABLE);last=Clock::now();stats=last;frames=0;continue;}
                 if(!app.renderer.waitForFrame()) continue;
@@ -822,7 +823,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
                 advanceFlightTime(dt,[&](double step){app.update(step);});
                 if(app.dirty) {
                     app.world.prepare();app.renderer.flying=app.moving();app.renderer.render(app.world,app.view,app.palette);app.recordFlightFrame();app.overlay();app.renderer.present();app.dirty=false;frames++;
-                    if(app.moving()) settle=12;
+                    if(app.moving()) settle=48;
                     if(frameLog.is_open()) frameLog<<"F,"<<app.renderer.submittedSerial()<<','<<std::chrono::duration<double>(now.time_since_epoch()).count()<<','<<dt*1000<<','<<app.renderer.resolutionFactor()<<','<<app.world.zoomLog10<<"\n";
                     double elapsed=std::chrono::duration<double>(now-stats).count();
                     if(elapsed>=.75) {app.fps=frames/elapsed;frames=0;stats=now;}
