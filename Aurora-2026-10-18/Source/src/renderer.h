@@ -32,7 +32,7 @@ struct alignas(16) Constants {
 };
 static_assert(sizeof(Constants)%16==0 && sizeof(Constants)<=65536,"D3D11 constant buffer layout");
 struct alignas(16) FrameConstants {
-    Float4 jitter,prevRight,prevUp,prevForward,prevCamera,temporal,output;
+    Float4 jitter,prevRight,prevUp,prevForward,prevCamera,temporal,output,ship,shipState;
 };
 class Renderer {
     friend struct RendererTestAccess;
@@ -52,7 +52,7 @@ class Renderer {
     std::array<ComPtr<ID3D11Texture2D>,2> historyTextures;
     std::array<ComPtr<ID3D11RenderTargetView>,2> historyTargets;
     std::array<ComPtr<ID3D11ShaderResourceView>,2> historyViews;
-    ComPtr<ID3D11PixelShader> temporalShader,presentTemporalShader;
+    ComPtr<ID3D11PixelShader> temporalShader,presentTemporalShader,temporalShipShader;
     int historyIndex=0,jitterIndex=0,historyWidth=0,historyHeight=0;
     bool historyValid=false,historyRestarted=false,frameTemporal=false,temporalUpscale=true;
     Vec3 previousRight{},previousUp{},previousForward{};
@@ -69,7 +69,7 @@ class Renderer {
     ComPtr<ID3D11PixelShader> gapDepth,gapUltra;
     std::array<ComPtr<ID3D11PixelShader>,3> profileShaders;
     std::array<ComPtr<ID3D11ComputeShader>,3> rayBegin,rayContinue,rayFinish,rayRefine,raySegment;
-    std::array<ComPtr<ID3D11PixelShader>,3> rayResolve;
+    std::array<ComPtr<ID3D11PixelShader>,3> rayResolve,rayResolveShip;
     ComPtr<ID3D11ComputeShader> rayPrepare;
     ComPtr<ID3D11ComputeShader> raySort;
     std::array<ComPtr<ID3D11ComputeShader>,3> coneShaders;
@@ -180,6 +180,10 @@ public:
     // The flight loop clears this for still frames (nothing moving): a capStart
     // restart then waits for the camera to move, and stills keep full scale.
     bool flying=true;
+    // Race ship drawn as a body in the scene: centre relative to the camera in
+    // camera units and hull radius in w (0: no ship); state x boost, y wrecked.
+    // With a ship the frame uses shader variants of its own.
+    Float4 shipBody{},shipState{};
     // Offline flight tests: feed a synchronously measured GPU frame time.
     void feedFrameTime(double ms) {latestGpuMs=ms;latestScale=dynamicScale;freshSample=true;updateDynamicScale();}
     float temporalBlend=.1f,temporalSharpen=.25f;

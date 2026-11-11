@@ -58,7 +58,11 @@ drei festen Strecken:
 **Das Schiff.** Im freien Flug schrumpft die Kamera beim Annähern sofort mit und
 erreicht eine Wand deshalb nie. Im Rennen fliegst du ein sichtbares Schiff, das vor
 der Kamera herfliegt (Verfolgerkamera, zwölf Schiffsradien dahinter und etwas
-darüber). Die blasse Kugel um das Schiff ist sein Rumpf für die Kollision.
+darüber). Es ist ein echter Körper im Bild: Wände verdecken es, es wird wie die
+Umgebung beleuchtet, wirft einen Schatten auf die Oberfläche, und die Fläche
+direkt am Rumpf wird dunkler. Schatten und Abdunklung zeigen, wie nah du einer
+Wand bist. Für die Kollision zählt eine Kugel um das Schiff, etwas größer als der
+sichtbare Körper.
 **Berührt diese Kugel eine Oberfläche, ist der Lauf vorbei** (CRASHED, Enter für
 einen neuen Versuch). Gerechnet wird mit dem echten Abstand des Schiffs zur
 Oberfläche: Vom Schiffsmittelpunkt aus werden 64 Strahlen in alle Richtungen bis
@@ -80,19 +84,20 @@ Schrumpfen und Wachsen bleibt das Schiff an seinem Ort; die Kamera rückt nach.
   schnell hinein: Dort ist keine Wand im Weg, das Schiff schrumpft einfach mit.
 - In offenem Raum wächst das Schiff wieder und wird damit schneller.
 
-Tempo: **W** normal, **Shift** doppelt (Triebwerke leuchten orange), **Strg**
+Tempo: **W** normal, **Shift** doppelt (Triebwerke leuchten orange statt türkis), **Strg**
 langsam (40 %). Shift und Mausrad des freien Flugs gelten im Rennen nicht. Die
 Anzeige zeigt `Wall x…`, den Abstand des Schiffs zur nächsten Oberfläche in
 Schiffsradien, und darunter einen Balken; unter x3 wird die Zahl gelb, bei x1 ist
-es ein Crash. Der Geist ist eine Kugel in Schiffsgröße an der Stelle, an der dein
-bestes Schiff war. Geist und Ziel sind auch hinter Wänden zu sehen (dann blasser)
+es ein Crash. Der Geist ist eine blasse Kugel in Schiffsgröße an der Stelle, an
+der dein bestes Schiff war; direkt neben deinem Schiff schrumpft sie zu einem Punkt. Geist und Ziel sind auch hinter Wänden zu sehen (dann blasser)
 und zeigen am Bildrand die Richtung, wenn sie außerhalb des Bildes liegen.
 
-Grenzen: Das Schiff ist ein flaches Symbol über dem Bild. Es wird nicht von Wänden
-verdeckt und wirft keinen Schatten, deshalb ist die Tiefe schwer zu schätzen (siehe
-`ROADMAP.md`, Punkt 2). Sehr dünne Spitzen zwischen zwei Messstrahlen können
-übersehen werden. Dreht man die Sicht, schwenkt das Schiff an seinem Arm vor der
-Kamera mit und kann so auch seitlich in eine Wand geraten.
+Grenzen: Das Fraktal wirft keinen Schatten auf das Schiff, und der Geist ist
+weiterhin flach über das Bild gezeichnet. Der Schatten des Schiffs ist der einer
+Kugel und fällt auch durch dünne Wände hindurch. Sehr dünne Spitzen zwischen zwei
+Messstrahlen der Kollision können übersehen werden. Dreht man die Sicht, schwenkt
+das Schiff an seinem Arm vor der Kamera mit und kann so auch seitlich in eine Wand
+geraten.
 
 Start und bester Lauf jeder Strecke liegen in `race-start-<n>.aurora` und
 `race-ghost-<n>.bin` neben der EXE. Löschst du beide Dateien einer Strecke, wird
@@ -103,9 +108,12 @@ bleiben auch bei sehr tiefem Zoom genau (Test bei 10^20). Geprüft mit `ctest`
 Anflug; beim Crash liegt die Oberfläche unabhängig nachgemessen zwischen 0,6 und
 1,15 Rumpfradien vom Schiffsmittelpunkt) und `AuroraFractal.exe --race-check <Ordner>`: Das legt alle drei Strecken
 aus, fliegt jede mit der echten Steuerung nach, prüft Ziel, Bestzeit, Speichern,
-Laden und den Crash und schreibt Bilder der Anzeige. Das Rendern selbst ist
-unverändert: alle 14 gespeicherten Ansichten bei 1980 × 1058 sind pixelgleich zur
-vorherigen EXE.
+Laden und den Crash, prüft, dass ein Schiff vor der Oberfläche gezeichnet und eines
+dahinter verdeckt wird, und schreibt Bilder der Anzeige. Außerhalb des Rennens ist
+das Rendern unverändert: Das Schiff steckt in eigenen Shader-Varianten, und alle 14
+gespeicherten Ansichten bei 1980 × 1058 sind pixelgleich zur EXE vor dem Rennmodus.
+Im Rennen kostet das Schiff rund 0,01 ms GPU-Zeit pro Bild (gemessen bei
+1600 × 900).
 
 ## Was behoben ist
 

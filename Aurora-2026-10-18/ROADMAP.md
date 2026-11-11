@@ -1,7 +1,7 @@
 # Roadmap Geisterrennen
 
-Stand 11.11.2026. Im Spiel: drei feste Strecken, sichtbares Schiff vor einer
-Verfolgerkamera, Crash am echten Wandabstand, Geist, Bestzeiten.
+Stand 11.11.2026. Im Spiel: drei feste Strecken, Schiff als Körper im Bild vor
+einer Verfolgerkamera, Crash am echten Wandabstand, Geist, Bestzeiten.
 
 ## 1. Crash am echten Wandabstand (CPU) — erledigt
 
@@ -31,50 +31,44 @@ ohne Crash ein. `--race-check` fliegt alle drei Strecken ins Ziel; mit Shift auf
 die nächste Wand endet der Lauf nach 1,5 bis 1,9 Sekunden.
 
 Offen: von Hand spielen und bestätigen, dass der Crash zu dem passt, was man
-sieht. Das hängt auch an Punkt 2, weil das flache Schiff keine Tiefe zeigt.
+sieht.
 
-## 2. Schiff als echter Körper im Bild (GPU)
+## 2. Schiff als echter Körper im Bild (GPU) — erledigt
 
-**Ziel:** Man sieht, wie nah das Schiff der Wand ist, und beim Crash steckt der
-Rumpf sichtbar an der Oberfläche.
+Das Schiff wird im Beleuchtungsdurchlauf zusammen mit dem Fraktal gerechnet:
 
-**Ansatz:** Das Schiff im Shader zusammen mit dem Fraktal rechnen statt als
-Overlay:
+- Zwei Triebwerksgondeln, Kabine und Strebe als Abstandsfeld, pro Pixel entlang
+  des Sichtstrahls innerhalb der Rumpfkugel verfolgt und mit der Treffertiefe des
+  Fraktals verglichen. Das ergibt die Verdeckung in beide Richtungen.
+- Eigenes Licht mit derselben Lichtrichtung, Glanz auf der Kabine, Triebwerke
+  leuchten türkis, mit Shift orange, nach dem Crash rot.
+- Schatten des Schiffs auf dem Fraktal (weiche Kugel) und eine Abdunklung der
+  Fläche bis etwa 2,6 Rumpfradien um das Schiff.
+- Kantenglättung: Schiffspixel sind im gerechneten Bild markiert (Alpha 0,75) und
+  nehmen ihren Verlauf vom selben Bildpunkt statt über die Tiefe des Fraktals
+  dahinter. Verlauf mit Schiff ist eigens markiert, damit Schiff und Fläche sich
+  beim Wechsel nicht mischen.
+- Eigene Shader-Varianten (`RACE_SHIP`); alle anderen Shader sind unverändert.
 
-- Schiffsposition und Rumpfradius pro Bild an den Shader geben (freies Feld im
-  Frame-Konstantenpuffer oder ein kleiner eigener Puffer).
-- Im Beleuchtungsdurchlauf pro Pixel den Strahl mit dem Schiffskörper schneiden
-  (Kugel oder einfache Form aus Kugeln und Kapseln) und mit der Treffertiefe des
-  Fraktals vergleichen: Was näher ist, wird gezeichnet. Das ergibt die Verdeckung.
-- Schatten des Schiffs auf dem Fraktal: Im Schattenstrahl zusätzlich das Schiff
-  testen. Der Schatten läuft beim Annähern auf das Schiff zu und ist der
-  wichtigste Hinweis auf den Abstand.
-- Eigene Beleuchtung des Schiffs und Triebwerksleuchten; die Kollisionskugel nur
-  noch als dünner Rand oder gar nicht.
+Geprüft: `--race-check` zählt Schiffspixel vor der Oberfläche (11.396) und hinter
+ihr (0). Bilder mit und ohne Kantenglättung nach einer Sekunde Flug ohne Schlieren.
+14 Ansichten außerhalb des Rennens pixelgleich. GPU-Zeit im Rennen mit und ohne
+Schiff: 2,47 gegen 2,46 ms, 2,44 gegen 2,43 ms, 2,28 gegen 2,28 ms (1600 × 900,
+Balanced).
 
-**Zu beachten:**
+Nicht gemacht:
 
-- Außerhalb des Rennens muss das Bild pixelgleich bleiben (Prüfung über die 14
-  gespeicherten Ansichten wie bisher). Am einfachsten über eine eigene
-  Shader-Variante nur für das Rennen.
-- Die zeitliche Kantenglättung reprojiziert über die Tiefe des Fraktals. Das Schiff
-  bewegt sich mit der Kamera und braucht eine eigene Behandlung, sonst zieht es
-  Schlieren oder wird verworfen.
-- Temporales Hochskalieren und dynamische Auflösung gelten auch für das Schiff.
-- GPU-Zeit im Rennen vorher und nachher messen (Budget 13,5 ms).
-- Der Geist könnte denselben Körper halbtransparent bekommen.
+- Das Fraktal wirft keinen Schatten auf das Schiff.
+- Der Geist ist weiter ein flacher Kreis; er könnte denselben Körper
+  halbtransparent bekommen.
+- Der Schatten des Schiffs fällt durch dünne Wände, weil er nicht gegen das
+  Fraktal geprüft wird.
+- Schneller Schwenk und 4K sind nur von Hand zu beurteilen, das steht noch aus.
 
-**Fertig, wenn:**
+## Als Nächstes
 
-- Wände verdecken das Schiff, das Schiff verdeckt Wände, in Bildern geprüft.
-- Schatten auf der Oberfläche sichtbar und richtig herum.
-- 14 Ansichten außerhalb des Rennens pixelgleich; GPU-Zeit im Rennen gemessen.
-- Kein Schlierenziehen bei schnellem Schwenk.
-
-## Reihenfolge
-
-1. Von Hand spielen und Tempo, Schiffsgröße und Schrumpfrate festlegen.
-2. Punkt 2 (Eingriff in den Renderer).
+Von Hand spielen und Tempo, Schiffsgröße, Schrumpfrate und Kameraarm festlegen.
+Danach die Punkte unter „Nicht gemacht“ und die kleineren Punkte unten.
 
 ## Kleinere Punkte
 

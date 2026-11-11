@@ -117,7 +117,14 @@ cbuffer Frame : register(b2) {
     float4 prevCamera;
     float4 temporalInfo;
     float4 outputInfo;   // xy: resolved (history) size; renderInfo.xy is the traced size
+    float4 shipBody;     // race ship: centre relative to the camera (camera units), w hull radius
+    float4 shipState;    // x boost, y wrecked
 };
+// The race ship is a real body in the scene. Only the shaders compiled with
+// RACE_SHIP contain it; every other shader is unchanged.
+#ifndef RACE_SHIP
+#define RACE_SHIP 0
+#endif
 struct VertexOut {float4 position:SV_Position;float2 uv:TEXCOORD0;};
 VertexOut vertexMain(uint id:SV_VertexID) {
     VertexOut o;o.uv=float2((id<<1)&2,id&2);
@@ -393,11 +400,30 @@ float3 shade(float3 rd,float logTravel,float pixelWidth) {
         }
     }
     #endif
+    #if RACE_SHIP
+    // The ship's shadow on the surface, and a darkening where the hull is close:
+    // together they show how far the ship is from a wall. This point is rd in
+    // units of the hit distance.
+    float shipLight=1;
+    {
+        float unit=exp2(-clamp(logTravel,-100,100));
+        float3 toShip=shipBody.xyz*unit-rd;float radius=shipBody.w*unit,along=dot(toShip,light);
+        if(along>0) {
+            float miss=length(toShip-light*along),soft=radius*.2+along*.06;
+            float cast=smoothstep(radius*.7-soft,radius*.7+soft,miss);
+            shadow=min(shadow,cast);shipLight=lerp(.55,1,cast);
+        }
+        shipLight*=lerp(.5,1,smoothstep(1.,2.6,length(toShip)/max(radius,1e-30)));
+    }
+    #endif
     float3 material=stone(n,ao);
     float facing=saturate(dot(n,-rd));
     float3 color=material*(.18+.26*facing+diffuse*(.45+.65*shadow))*ao;
     color+=float3(.04,.09,.14)*(.3+.7*saturate(n.y))*ao;
     color+=float3(.70,.60,.42)*pow(saturate(dot(n,normalize(light-rd))),18)*shadow*.1;
+    #if RACE_SHIP
+    color*=shipLight;
+    #endif
     return color;
 }
 float3 finishColor(float3 col) {
@@ -884,8 +910,57 @@ void refineRays(uint3 position:SV_DispatchThreadID) {
     InterlockedAdd(traceStats[8],fieldCalls);InterlockedAdd(traceStats[9],fieldIterations);
     #endif
 }
+#if RACE_SHIP
+float shipCapsule(float3 p,float3 a,float3 b,float r) {
+    float3 pa=p-a,ba=b-a;return length(pa-ba*saturate(dot(pa,ba)/dot(ba,ba)))-r;
+}
+// Ship in its own frame (x right, y up, z forward), hull radius 1: two engine
+// pods, a cabin between them and the strut that joins them.
+float shipField(float3 q) {
+    float pods=shipCapsule(float3(abs(q.x),q.y,q.z),float3(.55,0,-.40),float3(.55,0,.45),.17);
+    float strut=shipCapsule(q,float3(-.55,0,.05),float3(.55,0,.05),.055);
+    float cabin=(length((q-float3(0,.05,-.02))*float3(1,1.3,.7))-.22)*.7;
+    return min(pods,min(strut,cabin));
+}
+// Colour of the ship along this ray if it is in front of the fractal (limit).
+float4 shipPixel(float3 rd,float limit) {
+    float3 centre=shipBody.xyz;float radius=shipBody.w,along=dot(centre,rd);
+    float miss=dot(centre,centre)-along*along;
+    if(along<=0 || miss>=radius*radius) return 0;
+    float halfChord=sqrt(radius*radius-miss),t=max(along-halfChord,0),end=min(along+halfChord,limit);
+    float3 right=viewRight.xyz,up=viewUp.xyz,forward=viewForward.xyz,q=0;bool hit=false;
+    [loop] for(int i=0;i<40 && t<end;i++) {
+        float3 local=(rd*t-centre)/radius;q=float3(dot(local,right),dot(local,up),dot(local,forward));
+        float d=shipField(q);
+        if(d<.004) {hit=true;break;}
+        t+=d*radius;
+    }
+    if(!hit) return 0;
+    const float e=.01;
+    float3 a=float3(1,-1,-1),b=float3(-1,-1,1),c=float3(-1,1,-1),d4=float3(1,1,1);
+    float3 g=a*shipField(q+a*e)+b*shipField(q+b*e)+c*shipField(q+c*e)+d4*shipField(q+d4*e);
+    float3 n=normalize(g);n=right*n.x+up*n.y+forward*n.z;
+    float3 light=normalize(float3(-.55,.8,-.4));
+    float diffuse=saturate(dot(n,light)),facing=saturate(dot(n,-rd)),wrecked=shipState.y;
+    bool cabin=abs(q.x)<.3 && abs(q.z)<.4 && abs(q.y-.05)<.25 && length((q-float3(0,.05,-.02))*float3(1,1.3,.7))<.26;
+    float3 base=cabin?float3(.07,.12,.17):float3(.62,.66,.70);
+    base=lerp(base,float3(.11,.085,.07),wrecked*.85);
+    float3 color=base*(.20+.22*facing+diffuse*.95)+float3(.04,.09,.14)*(.3+.7*saturate(n.y));
+    color+=float3(.9,.85,.75)*pow(saturate(dot(n,normalize(light-rd))),cabin?60:24)*(cabin?.7:.25)*(1-wrecked);
+    // Engines glow at the back of the pods, which is the side the camera sees.
+    float nozzle=saturate(1-length(float2(abs(q.x)-.55,q.y))/.13)*smoothstep(-.42,-.52,q.z);
+    float3 glow=lerp(lerp(float3(.25,.95,.90),float3(1.,.60,.18),shipState.x),float3(.9,.25,.08),wrecked);
+    color=lerp(color,glow*(1.3+.5*shipState.x),nozzle);
+    return float4(color,1);
+}
+#endif
 float4 shadeJob(uint3 p) {
     float2 surface=rayImage.Load(int4(p,0));float3 rd=rayDirection(p);
+    #if RACE_SHIP
+    // Alpha .75 marks ship pixels for the temporal resolve; it still counts as finished.
+    float4 ship=shipPixel(rd,surface.y>0?exp2(min(surface.x,100)):1e30);
+    if(ship.a>0) return float4(finishColor(ship.rgb),.75);
+    #endif
     return float4(finishColor(surface.y>0?shade(rd,surface.x,1.0/(renderInfo.y*1.85)):skyColor(rd)),surface.y>=0?1:0);
 }
 float4 resolveRays(VertexOut input):SV_Target {
@@ -976,9 +1051,19 @@ float4 temporalMain(VertexOut input):SV_Target {
     }
     float depth=dot(seen,prevForward.xyz);
     float3 result=soft;
+    #if RACE_SHIP
+    // The ship keeps its place on screen: its history is at the same pixel,
+    // whatever the surface behind it does. Depth 45000 marks ship history.
+    float shipMark=frameTexture.Load(int3(clamp(p,0,limit),0)).a;
+    bool onShip=shipMark>.6 && shipMark<.9;
+    if(onShip) depth=1;
+    #endif
     if(temporalInfo.x>0 && depth>0) {
         float2 projected=float2(dot(seen,prevRight.xyz),dot(seen,prevUp.xyz))*(1.85/depth);
         float2 previous=float2(projected.x*outputInfo.y+outputInfo.x,outputInfo.y-projected.y*outputInfo.y)*.5;
+        #if RACE_SHIP
+        if(onShip) previous=o;
+        #endif
         if(all(previous>=0) && all(previous<=outputInfo.xy)) {
             // Alpha carries log radial depth in that frame's camera units.
             // Nearest-neighbour depth avoids blending foreground and background.
@@ -990,6 +1075,10 @@ float4 temporalMain(VertexOut input):SV_Target {
                 float expected=seenScale+log2(max(length(seen),1e-30))+prevCamera.w;
                 float tolerance=.04+abs(expected)*.001+min(.2,max(0,farthest-nearest)*.25);
                 trust=surface?(oldDepth<30000?1-smoothstep(tolerance,tolerance*2,abs(oldDepth-expected)):0):(oldDepth>=30000?1:0);
+                #if RACE_SHIP
+                bool shipHistory=abs(oldDepth-45000)<1000;
+                if(onShip) trust=shipHistory?1:0;else if(shipHistory) trust=0;
+                #endif
             }
             float3 history=toYCoCg(sampleHistory(previous));
             float3 center=.5*(boxHi+boxLo),extent=.5*(boxHi-boxLo)+1e-4,offset=history-center;
@@ -1002,6 +1091,9 @@ float4 temporalMain(VertexOut input):SV_Target {
             result=lerp(soft,accumulated,trust);
         }
     }
+    #if RACE_SHIP
+    if(onShip) return float4(max(fromYCoCg(result),0),temporalInfo.w>0?45000:1);
+    #endif
     return float4(max(fromYCoCg(result),0),temporalInfo.w>0?(surface?nearest:60000):1);
 }
 float4 presentTemporal(VertexOut input):SV_Target {

@@ -251,28 +251,14 @@ struct App {
         renderer.rect(x-4,y-4,8,8,D2D1::ColorF(color.r,color.g,color.b,.95f*alpha),4);
         renderer.text(label,std::clamp(x+10,8.f,w-120),std::clamp(y+labelShift,8.f,h-30),120,22,0,D2D1::ColorF(color.r,color.g,color.b,alpha));
     }
-    // The player's ship at its true size and position in front of the chase camera:
-    // two engine pods, a cockpit between them and the engine glow.
-    void raceShip(bool boosting,bool wrecked) {
-        const float w=width/uiScale,h=height/uiScale;
-        Vec3 ship=race.shipOffset(world.citadel,view);double depth=ship.dot(view.forward());
-        if(depth<=0) return;
-        float focal=float(1.85*h*.5),cx=float(w*.5+ship.dot(view.right())/depth*focal),cy=float(h*.5-ship.dot(view.up())/depth*focal);
-        float r=float(race.hullRadius(world.citadel)/depth*focal);
-        auto hull=wrecked?D2D1::ColorF(.30f,.22f,.18f):D2D1::ColorF(.80f,.85f,.88f),dark=D2D1::ColorF(.10f,.14f,.18f);
-        auto glow=wrecked?D2D1::ColorF(1.f,.45f,.15f,.85f):boosting?D2D1::ColorF(1.f,.72f,.30f,.95f):D2D1::ColorF(.40f,.88f,.84f,.9f);
-        // The collision sphere, faintly, so contact with a wall can be judged.
-        renderer.rect(cx-r,cy-r,2*r,2*r,D2D1::ColorF(glow.r,glow.g,glow.b,wrecked?.30f:.10f),r);
-        for(int side=-1;side<=1;side+=2) {
-            float px=cx+side*r*.62f;
-            renderer.rect(px-r*.24f,cy-r*.30f,r*.48f,r*.60f,dark,r*.2f);
-            renderer.rect(px-r*.19f,cy-r*.25f,r*.38f,r*.50f,hull,r*.16f);
-            float g=r*(boosting?.17f:.12f);
-            renderer.rect(px-g,cy-g,2*g,2*g,glow,g);
-        }
-        renderer.rect(cx-r*.62f,cy-r*.05f,r*1.24f,r*.10f,dark,r*.05f);
-        renderer.rect(cx-r*.20f,cy-r*.16f,r*.40f,r*.36f,dark,r*.16f);
-        renderer.rect(cx-r*.15f,cy-r*.12f,r*.30f,r*.28f,hull,r*.13f);
+    // Hands the ship to the renderer, which draws it as a body in the scene.
+    void syncRaceShip() {
+        using State=Race::State;
+        bool shown=world.kind==1 && (race.state==State::Countdown || race.state==State::Running || race.state==State::Crashed);
+        if(!shown) {renderer.shipBody={};renderer.shipState={};return;}
+        Vec3 ship=race.shipOffset(world.citadel,view);
+        renderer.shipBody={float(ship.x),float(ship.y),float(ship.z),float(race.hullRadius(world.citadel))};
+        renderer.shipState={race.state==State::Running && keys[VK_SHIFT]?1.f:0.f,race.state==State::Crashed?1.f:0.f,0,0};
     }
     void raceOverlay(bool showHint) {
         using State=Race::State;
@@ -288,11 +274,12 @@ struct App {
             double scale=std::exp2(std::clamp(race.finish.logUnit-world.citadel.logUnit,-1000.,1000.));
             raceMarker(raceOffset(world.citadel,race.finish),Race::gateRadius*scale,gold,L"FINISH",-24,h*.22f);
             Vec3 ghost;
-            if(race.state!=State::Crashed && race.ghost(world.citadel,race.state==State::Running?race.time:0,ghost))
-                raceMarker(ghost,race.hullRadius(world.citadel),teal,L"GHOST",2,60);
+            if(race.state!=State::Crashed && race.ghost(world.citadel,race.state==State::Running?race.time:0,ghost)) {
+                // Next to your own ship the ghost is only a dot, so it does not cover the hull.
+                bool beside=(ghost-race.shipOffset(world.citadel,view)).length()<3*race.hullRadius(world.citadel);
+                raceMarker(ghost,race.hullRadius(world.citadel),teal,beside?L"":L"GHOST",2,beside?5.f:60.f);
+            }
         }
-        if(world.kind==1 && (race.state==State::Countdown || race.state==State::Running || race.state==State::Crashed))
-            raceShip(race.state==State::Running && keys[VK_SHIFT],race.state==State::Crashed);
         renderer.rect(x,top,350,100,panel,12);
         std::wstring title,big,detail,name=std::wstring(L"  ·  ")+raceTrackInfo(raceTrack).name;D2D1_COLOR_F accent=teal,detailColor=muted;
         switch(race.state) {
@@ -864,21 +851,54 @@ static int raceCheck(App& app) {
     app.directory=out;app.persist=true;app.world=World(1);app.view=View(1);app.automatic=false;app.paused=false;app.keys.fill(false);
     auto fail=[](const std::string& text){throw std::runtime_error(text);};
     auto frames=[&](int count){for(int i=0;i<count;i++) app.update(1./60);};
-    auto picture=[&](const std::wstring& name){app.world.prepare();app.renderer.render(app.world,app.view,0,false);app.overlay();app.renderer.capture((out/name).wstring());};
+    auto picture=[&](const std::wstring& name){app.world.prepare();app.syncRaceShip();app.renderer.render(app.world,app.view,0,false);app.overlay();app.renderer.capture((out/name).wstring());};
+    double shipMs=0,plainMs=0;
     // The player repeats the guided line: same steering, through the real controller.
     auto drive=[&](int limit,const std::wstring& capture) {
         app.keys['W']=true;
         for(int i=0;i<limit && app.race.state==Race::State::Running;i++) {
             app.view.face(RacePilot::steer(app.world,app.view.forward(),1./60));
             app.raceThrottle=RacePilot::throttle(app.race,app.world,app.view);app.update(1./60);
-            if(!capture.empty() && i==240) picture(capture);
+            // Render the second before the capture too, so a temporal run shows the ship in motion.
+            if(!capture.empty() && i>=180 && i<240) {app.world.prepare();app.syncRaceShip();app.renderer.flying=true;app.renderer.render(app.world,app.view,0,false);}
+            if(!capture.empty() && i==240) {
+                picture(capture);
+                // GPU cost of the ship: the same view with and without it, alternating.
+                app.syncRaceShip();auto body=app.renderer.shipBody;auto state=app.renderer.shipState;
+                double with=1e300,without=1e300;
+                for(int round=0;round<3;round++) {
+                    app.renderer.shipBody=body;app.renderer.shipState=state;
+                    auto a=app.renderer.sampleFrames(app.world,app.view,24,8);with=std::min(with,*std::min_element(a.begin(),a.end()));
+                    app.renderer.shipBody={};app.renderer.shipState={};
+                    auto b=app.renderer.sampleFrames(app.world,app.view,24,8);without=std::min(without,*std::min_element(b.begin(),b.end()));
+                }
+                shipMs=with;plainMs=without;
+            }
         }
         app.keys['W']=false;app.raceThrottle=-1;
     };
     // Step exactly to the end of the countdown, so a repeated line starts like the laid-out one.
     auto ready=[&](){for(int i=0;i<400 && app.race.state==Race::State::Countdown;i++) app.update(1./60);};
     picture(L"0-idle.png");
-    std::ofstream report(out/L"race-check.json");report<<"{\"tracks\":[";
+    // Depth: a ship in front of the surface is drawn, one behind it is hidden.
+    // Ship pixels carry alpha .75 in the traced image.
+    size_t shipInFront=0,shipBehind=0;
+    {
+        app.world.prepare();Vec3 ahead=app.view.forward();double wall=0;
+        for(int i=0;i<96;i++) {double d=app.world.citadel.distance(ahead*wall);if(d<1e-4) break;wall+=d;}
+        auto count=[&](double distance,double radius) {
+            Vec3 centre=ahead*distance;
+            app.renderer.shipBody={float(centre.x),float(centre.y),float(centre.z),float(radius)};app.renderer.shipState={};
+            app.renderer.render(app.world,app.view,0,false);auto image=app.renderer.pixels();
+            size_t marked=0;for(size_t p=3;p<image.size();p+=4) marked+=image[p]>150 && image[p]<230;
+            return marked;
+        };
+        shipInFront=count(wall*.5,wall*.1);shipBehind=count(wall*1.6,wall*.3);
+        app.renderer.shipBody={};app.renderer.shipState={};
+        if(wall<=0 || shipInFront<200) fail("A ship in front of the surface was not drawn");
+        if(shipBehind!=0) fail("A ship behind the surface was not hidden");
+    }
+    std::ofstream report(out/L"race-check.json");report<<"{\"ship_pixels_in_front\":"<<shipInFront<<",\"ship_pixels_behind_wall\":"<<shipBehind<<",\"tracks\":[";
     for(int track=0;track<App::raceTracks;track++) {
         std::wstring tag=L"track-"+std::to_wstring(track+1);std::string label="Track "+std::to_string(track+1);
         auto begin=Clock::now();app.raceStartKey(track);
@@ -923,7 +943,7 @@ static int raceCheck(App& app) {
         app.keys[VK_SHIFT]=false;
         if(app.race.state!=Race::State::Crashed) fail(label+": boosting into a wall did not crash");
         double crashSeconds=app.race.finishedTime;picture(tag+L"-5-crashed.png");
-        report<<(track?",":"")<<"{\"crash_seconds\":"<<crashSeconds<<",\"par_seconds\":"<<par<<",\"repeat_seconds\":"<<repeat<<",\"layout_ms\":"<<layoutMs<<",\"ghost_samples\":"<<app.race.best.size()
+        report<<(track?",":"")<<"{\"gpu_ms_with_ship\":"<<shipMs<<",\"gpu_ms_without_ship\":"<<plainMs<<",\"crash_seconds\":"<<crashSeconds<<",\"par_seconds\":"<<par<<",\"repeat_seconds\":"<<repeat<<",\"layout_ms\":"<<layoutMs<<",\"ghost_samples\":"<<app.race.best.size()
             <<",\"finish_distance_start_units\":"<<toFinish.length()<<",\"start_zoom_log10\":"<<startZoom<<",\"finish_zoom_log10\":"<<finishZoom<<"}";
     }
     report<<"],\"passed\":true}\n";
@@ -1105,7 +1125,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
                 advanceFlightTime(dt,[&](double step){app.update(step);});
                 if(app.dirty) {
                     bool cameraMoving=app.moving() || app.cameraChanged;
-                    app.world.prepare();app.renderer.flying=cameraMoving;app.renderer.render(app.world,app.view,app.palette);app.recordFlightFrame();app.overlay();app.renderer.present();app.dirty=false;frames++;
+                    app.world.prepare();app.syncRaceShip();app.renderer.flying=cameraMoving;app.renderer.render(app.world,app.view,app.palette);app.recordFlightFrame();app.overlay();app.renderer.present();app.dirty=false;frames++;
                     settle.rendered(cameraMoving || app.renderer.restartedHistory(),app.renderer.usingTemporal());app.cameraChanged=false;
                     if(frameLog.is_open()) frameLog<<"F,"<<app.renderer.submittedSerial()<<','<<std::chrono::duration<double>(now.time_since_epoch()).count()<<','<<dt*1000<<','<<app.renderer.resolutionFactor()<<','<<app.world.zoomLog10<<"\n";
                     double elapsed=std::chrono::duration<double>(now-stats).count();

@@ -153,6 +153,9 @@ void Renderer::initialize(HWND hwnd,int w,int h,bool paced) {
         check(device->CreateBuffer(&fd,nullptr,&frameConstants),"Create frame constants");
         auto taa=compileShader("temporalMain","ps_5_0");
         check(device->CreatePixelShader(taa->GetBufferPointer(),taa->GetBufferSize(),nullptr,&temporalShader),"Create temporal resolve");
+        D3D_SHADER_MACRO shipMacros[]={{"RACE_SHIP","1"},{nullptr,nullptr}};
+        auto shipTaa=compileShader("temporalMain","ps_5_0",shipMacros);
+        check(device->CreatePixelShader(shipTaa->GetBufferPointer(),shipTaa->GetBufferSize(),nullptr,&temporalShipShader),"Create ship temporal resolve");
         auto present=compileShader("presentTemporal","ps_5_0");
         check(device->CreatePixelShader(present->GetBufferPointer(),present->GetBufferSize(),nullptr,&presentTemporalShader),"Create temporal present");
         wchar_t value[16]{};
@@ -305,6 +308,13 @@ void Renderer::prepareWaveShaders(int profile) {
         auto refine=compileShader("refineRays","cs_5_0",macros);
         check(device->CreateComputeShader(refine->GetBufferPointer(),refine->GetBufferSize(),nullptr,&rayRefine[profile]),"Create surface refiner");
         auto first=compileShader("beginRays","cs_5_0",macros),resolve=compileShader("resolveRays","ps_5_0",macros);
+        {
+            std::vector<D3D_SHADER_MACRO> shipMacros;
+            for(const auto* m=macros;m->Name;m++) shipMacros.push_back(*m);
+            shipMacros.push_back({"RACE_SHIP","1"});shipMacros.push_back({nullptr,nullptr});
+            auto shipResolve=compileShader("resolveRays","ps_5_0",shipMacros.data());
+            check(device->CreatePixelShader(shipResolve->GetBufferPointer(),shipResolve->GetBufferSize(),nullptr,&rayResolveShip[profile]),"Create ship resolver");
+        }
         macros[3].Definition="256";auto next=compileShader("continueRays","cs_5_0",macros);
         macros[3].Definition="8192";auto finish=compileShader("continueRays","cs_5_0",macros);
         macros[3].Definition="256";macros[8].Definition="1";
@@ -444,7 +454,7 @@ void Renderer::wavefrontPass(int profile) {
     context->CSSetUnorderedAccessViews(0,1,noTargets,nullptr);context->CSSetUnorderedAccessViews(5,1,noTargets,nullptr);
     if(collectStats) context->CSSetUnorderedAccessViews(7,1,noTargets,nullptr);
     context->CSSetShader(nullptr,nullptr,0);
-    auto result=rayView.Get();context->PSSetShaderResources(3,1,&result);scenePass(rayResolve[profile].Get());context->PSSetShaderResources(3,1,noViews);
+    auto result=rayView.Get();context->PSSetShaderResources(3,1,&result);scenePass((shipBody.w>0?rayResolveShip:rayResolve)[profile].Get());context->PSSetShaderResources(3,1,noViews);
     if(measurePasses) context->End(passQueries[4].Get());
     if(measureBatches) context->End(batchQueries[rayBatches*2].Get());
 }
@@ -642,6 +652,7 @@ void Renderer::renderFrame(const World& world,const View& view,int palette) {
     float blend=temporalBlend*(temporalDetail && !flying?.8f:1.f);
     frame.temporal={usable?1.f:0.f,blend,temporalSharpen,temporalDetail?1.f:0.f};
     frame.output={float(historyWidth),float(historyHeight),skipEmptyScan?1.f:0.f,0};
+    frame.ship=shipBody;frame.shipState=shipState;
     D3D11_MAPPED_SUBRESOURCE mapped{};
     check(context->Map(frameConstants.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"Update frame constants");
     memcpy(mapped.pData,&frame,sizeof(frame));context->Unmap(frameConstants.Get(),0);
@@ -659,7 +670,7 @@ void Renderer::temporalPass() {
     int target=historyIndex^1;
     ID3D11ShaderResourceView* none[7]{};context->PSSetShaderResources(0,7,none);
     context->IASetInputLayout(nullptr);context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context->VSSetShader(vertex.Get(),nullptr,0);context->PSSetShader(temporalShader.Get(),nullptr,0);
+    context->VSSetShader(vertex.Get(),nullptr,0);context->PSSetShader((shipBody.w>0?temporalShipShader:temporalShader).Get(),nullptr,0);
     context->RSSetState(rasterizer.Get());
     D3D11_VIEWPORT vp{0,0,float(historyWidth),float(historyHeight),0,1};context->RSSetViewports(1,&vp);
     ID3D11RenderTargetView* output=historyTargets[target].Get();context->OMSetRenderTargets(1,&output,nullptr);
