@@ -41,29 +41,54 @@ inline Vec3 raceOffset(const Citadel& camera,const RacePoint& point) {
     }
     return haveLinear?linearOffset:haveResolved?resolvedOffset:Vec3{};
 }
-// Time trial from a start snapshot to a finish gate. The first flight defines
-// the track; every faster run replaces the ghost.
+// Time trial from a start snapshot to a finish gate, flown by a ship with a
+// size of its own. The free camera shrinks instantly as it approaches a wall
+// and never arrives. The ship follows the surrounding scale with a delay: a
+// gentle approach zooms in, a fast one reaches the wall.
 struct Race {
-    enum class State {Idle,Recording,Countdown,Running,Finished};
-    static constexpr double sampleInterval=.05,countdownSeconds=3,gateRadius=.4,flightSpeed=2.5,minimumSeconds=2,maximumSeconds=900;
+    enum class State {Idle,Recording,Countdown,Running,Finished,Crashed};
+    // Ship radius and speed in ship units; the camera's wall distance is .4 camera units.
+    static constexpr double shipRadius=.06,shipSpeed=1.2,boostFactor=2,slowFactor=.3,wallDistance=.4;
+    // The ship settles at comfortRatio radii from the nearest wall, at adaptRate per second.
+    static constexpr double comfortRatio=16,adaptRate=.5;
+    static constexpr double sampleInterval=.05,countdownSeconds=3,gateRadius=.4,minimumSeconds=2,maximumSeconds=900;
     State state=State::Idle;
-    bool hasTrack=false,newBest=false,firstRun=false;
+    bool hasTrack=false,newBest=false;
     World startWorld{1};
     View startView{1};
     RacePoint finish;
     std::vector<RacePoint> best,current;
     double bestTime=0,time=0,countdown=0,finishedTime=0,previousBest=0;
+    double shipLogUnit=-1e6;   // log2 of one ship unit, in the scale of Citadel::logUnit
+    static double settledLogUnit(const Citadel& camera) {return camera.logUnit+std::log2(wallDistance/(comfortRatio*shipRadius));}
     bool active() const {return state!=State::Idle;}
     // The clock runs (and frames must be rendered) even without input.
     bool ticking() const {return state==State::Recording || state==State::Countdown || state==State::Running;}
     bool frozen() const {return state==State::Countdown;}
-    bool fixedSpeed() const {return ticking();}
+    // The camera unit follows the wall distance: below this unit the ship touches.
+    double crashLogUnit() const {return shipLogUnit+std::log2(shipRadius/wallDistance);}
+    // Wall distance in ship radii; 1 is contact.
+    double wallRatio(const Citadel& camera) const {return std::exp2(std::clamp(camera.logUnit-crashLogUnit(),-60.,60.));}
+    // One ship unit in current camera units.
+    double shipScale(const Citadel& camera) const {return std::exp2(std::clamp(shipLogUnit-camera.logUnit,-1000.,1000.));}
     void stop() {state=State::Idle;current.clear();}
     void beginTrack(const World& world,const View& view) {
-        startWorld=world;startView=view;current.clear();time=0;newBest=false;
+        startWorld=world;startView=view;shipLogUnit=settledLogUnit(world.citadel);current.clear();time=0;newBest=false;
         current.push_back(racePoint(world.citadel,0));state=State::Recording;
     }
-    // Ends the first flight: the camera position becomes the finish gate.
+    // Speed in ship units, whatever the distance to the walls. throttle 1 is cruise.
+    void fly(World& world,Vec3 direction,double dt,double throttle) const {
+        double magnitude=direction.length();if(magnitude<1e-12) return;
+        Vec3 ray=direction/magnitude;
+        double remaining=shipSpeed*throttle*dt*shipScale(world.citadel);
+        for(int i=0;i<96 && remaining>1e-12;i++) {
+            double step=std::min(remaining,world.clearance*.7),before=world.citadel.logUnit;
+            if(!world.advance(ray*step)) break;
+            remaining=(remaining-step)*std::exp2(before-world.citadel.logUnit);
+            if(world.citadel.logUnit<crashLogUnit()) break;
+        }
+    }
+    // Ends the laying-out flight: the camera position becomes the finish gate.
     bool finishTrack(const World& world) {
         if(state!=State::Recording || time<minimumSeconds) return false;
         finish=racePoint(world.citadel,time);current.push_back(finish);
@@ -74,12 +99,13 @@ struct Race {
         current.resize(entered+1);
         if(current.size()<2 || current.back().time<minimumSeconds*.5) {current.clear();state=State::Idle;return false;}
         best=std::move(current);current.clear();bestTime=finishedTime=best.back().time;previousBest=0;
-        hasTrack=true;newBest=true;firstRun=true;state=State::Finished;return true;
+        hasTrack=true;newBest=true;state=State::Finished;return true;
     }
     bool start(World& world,View& view) {
         if(!hasTrack) return false;
         world=startWorld;world.motionReset=true;world.cameraMotion={};view=startView;
-        current.clear();time=0;countdown=countdownSeconds;newBest=false;firstRun=false;state=State::Countdown;return true;
+        shipLogUnit=settledLogUnit(world.citadel);
+        current.clear();time=0;countdown=countdownSeconds;newBest=false;state=State::Countdown;return true;
     }
     // Distance to the finish in finish units; gateRadius is its free space.
     double finishDistance(const Citadel& camera) const {
@@ -96,6 +122,8 @@ struct Race {
         if(state!=State::Recording && state!=State::Running) return false;
         time+=dt;
         if(time>maximumSeconds) {stop();return false;}
+        if(world.citadel.logUnit<crashLogUnit()) {finishedTime=time;current.clear();state=State::Crashed;return false;}
+        shipLogUnit+=(settledLogUnit(world.citadel)-shipLogUnit)*(1-std::exp(-adaptRate*dt));
         if(state==State::Running && finishDistance(world.citadel)<gateRadius) {
             current.push_back(racePoint(world.citadel,time));finishedTime=time;previousBest=bestTime;
             newBest=time<bestTime;
@@ -106,16 +134,16 @@ struct Race {
         return false;
     }
     // Ghost position at race time t relative to the camera (camera units).
-    bool ghost(const Citadel& camera,double t,Vec3& offset,double& logUnit) const {
+    bool ghost(const Citadel& camera,double t,Vec3& offset) const {
         if(best.empty()) return false;
-        if(t<=best.front().time) {offset=raceOffset(camera,best.front());logUnit=best.front().logUnit;return true;}
-        if(t>=best.back().time) {offset=raceOffset(camera,best.back());logUnit=best.back().logUnit;return true;}
+        if(t<=best.front().time) {offset=raceOffset(camera,best.front());return true;}
+        if(t>=best.back().time) {offset=raceOffset(camera,best.back());return true;}
         size_t lo=0,hi=best.size()-1;
         while(lo+1<hi) {size_t mid=(lo+hi)/2;if(best[mid].time<=t) lo=mid;else hi=mid;}
         const auto& a=best[lo];const auto& b=best[hi];
         double f=(t-a.time)/std::max(b.time-a.time,1e-12);
         Vec3 from=raceOffset(camera,a),to=raceOffset(camera,b);
-        offset=from+(to-from)*f;logUnit=a.logUnit+(b.logUnit-a.logUnit)*f;return true;
+        offset=from+(to-from)*f;return true;
     }
     bool saveGhost(const std::filesystem::path& path) const {
         if(!hasTrack) return false;
@@ -151,6 +179,12 @@ struct Race {
         best=std::move(points);finish=std::move(gate);bestTime=seconds;hasTrack=true;state=State::Idle;current.clear();
     }
 private:
-    static constexpr char magic[12]={'A','U','R','O','R','A','R','A','C','E','1','\n'};
+    static constexpr char magic[12]={'A','U','R','O','R','A','R','A','C','E','2','\n'};
+};
+// Lays out a track: the guided dive's steering, slowing near walls so that the
+// ship has time to shrink instead of hitting them.
+struct RacePilot {
+    static Vec3 steer(World& world,Vec3 forward,double dt) {return world.guide(forward.unit(),dt);}
+    static double throttle(const Race& race,const World& world) {return std::clamp((race.wallRatio(world.citadel)-2)/8,.1,1.);}
 };
 }

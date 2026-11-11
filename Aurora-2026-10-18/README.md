@@ -37,32 +37,56 @@ die installierte Version bleibt unverändert.
 
 ## Geisterrennen (11.11.2026)
 
-Ein Zeitrennen gegen deine eigene Bestzeit, in der Welt Mandelbox Citadel:
+Ein Zeitrennen gegen deine eigene Bestzeit, in der Welt Mandelbox Citadel, auf
+drei festen Strecken:
 
-- **N** setzt den Start an der jetzigen Stelle, die Uhr läuft sofort. Flieg zur
-  gewünschten Zielstelle und drück **N** noch einmal: Die Strecke ist gespeichert,
-  dieser erste Flug ist die Bestzeit und der erste Geist.
-- **Enter** startet das Rennen: zurück zum Start, drei Sekunden Countdown (umsehen
-  geht, fliegen nicht), dann los. Der Geist fliegt deinen besten Lauf nach. Das Ziel
-  ist eine Kugel, so groß wie der freie Raum an der Zielstelle. Enter während des
-  Rennens startet neu.
-- Bist du schneller, wird dein Lauf der neue Geist. **Rücktaste** verlässt das Rennen.
+| Taste | Strecke | Vorgabezeit | Zoom am Ziel |
+|---|---|---:|---:|
+| **1** | Outer Gate | 0:19,23 | etwa 160x |
+| **2** | Citadel Dive | 0:29,37 | etwa 40x |
+| **3** | Long Descent | 0:44,55 | etwa 10^5 |
 
-Der Weg ist frei: Es zählt nur die Zeit vom Start bis ins Ziel, Abkürzungen sind
-erlaubt. Im Rennen ist das Tempo fest (Shift und Mausrad wirken nicht), damit die
-Läufe vergleichbar sind. Wie im freien Flug bist du nah an Wänden langsam und in
-offenen Gängen schnell; die schnelle Linie hält Abstand und zielt in lange Gänge.
-Geist und Ziel sind auch hinter Wänden zu sehen (dann blasser) und zeigen am
-Bildrand die Richtung, wenn sie außerhalb des Bildes liegen.
+- **1**, **2** oder **3** startet die Strecke: Du stehst am Start, drei Sekunden
+  Countdown (umsehen geht, fliegen nicht), dann los. **Enter** startet die zuletzt
+  gewählte Strecke neu, auch mitten im Rennen. **Rücktaste** verlässt das Rennen.
+- Der Geist fliegt den bisher besten Lauf. Am Anfang ist das die Linie des
+  Autopiloten, der die Strecke ausgelegt hat; ihre Zeit ist die Vorgabezeit.
+- Bist du schneller, wird dein Lauf der neue Geist und bleibt gespeichert.
+- Das Ziel ist eine Kugel, so groß wie der freie Raum an der Zielstelle. Der Weg
+  dorthin ist frei, Abkürzungen sind erlaubt.
 
-Strecke und Geist liegen in `race-start.aurora` und `race-ghost.bin` neben der EXE
-und sind nach dem Neustart wieder da. Es gibt eine Strecke; eine neue mit N
-überschreibt sie beim zweiten N. Die Positionen des Geists sind wie die Kamera über
-ihre Referenzbahn gespeichert und bleiben auch bei sehr tiefem Zoom genau (Test bei
-10^20). Geprüft mit `ctest` (neuer Test `race_ghost`) und
-`AuroraFractal.exe --race-check <Ordner>`, das eine Strecke aufnimmt, zweimal
-dagegen fliegt und Bilder der Anzeige schreibt. Das Rendern selbst ist unverändert:
-alle 14 gespeicherten Ansichten bei 1980 × 1058 sind pixelgleich zur vorherigen EXE.
+**Das Schiff.** Im freien Flug schrumpft die Kamera beim Annähern sofort mit und
+erreicht eine Wand deshalb nie. Im Rennen fliegst du ein Schiff mit eigener Größe.
+Es passt sich der Umgebung an, aber mit Verzögerung: In Ruhe stellt es sich so ein,
+dass die nächste Wand 16 Schiffsradien entfernt ist, und holt pro Sekunde etwa 40 %
+des Unterschieds auf. Daraus folgt:
+
+- Fliegst du schnell auf eine Wand zu, kommt das Schrumpfen nicht hinterher. Bei
+  einem Schiffsradius Abstand ist der Lauf vorbei (**CRASHED**, Enter für einen
+  neuen Versuch).
+- Näherst du dich langsam oder flach, schrumpft das Schiff rechtzeitig mit und du
+  tauchst in die Details ein. So führt Strecke 3 bis etwa 10^5.
+- In offenem Raum wächst das Schiff wieder und wird damit schneller.
+
+Tempo: **W** normal, **Shift** doppelt, **Strg** langsam (30 %). Shift und Mausrad
+des freien Flugs gelten im Rennen nicht. Die Anzeige zeigt `Wall x…`, den Abstand
+zur nächsten Wand in Schiffsradien, und darunter einen Balken; unter x3 wird die
+Zahl gelb, bei x1 ist es ein Crash. Frontal auf eine Wand zu bleibt bei normalem
+Tempo nur wenige Sekunden, mit Shift etwa eine. Geist und Ziel sind auch hinter
+Wänden zu sehen (dann blasser) und zeigen am Bildrand die Richtung, wenn sie
+außerhalb des Bildes liegen.
+
+Start und bester Lauf jeder Strecke liegen in `race-start-<n>.aurora` und
+`race-ghost-<n>.bin` neben der EXE. Löschst du beide Dateien einer Strecke, wird
+sie beim nächsten Start neu ausgelegt und die Vorgabezeit gilt wieder. Die
+Positionen des Geists sind wie die Kamera über ihre Referenzbahn gespeichert und
+bleiben auch bei sehr tiefem Zoom genau (Test bei 10^20). Geprüft mit `ctest`
+(Test `race_ghost`: Positionen, Ablauf, Crash bei schnellem und Zoom bei langsamem
+Anflug) und `AuroraFractal.exe --race-check <Ordner>`: Das legt alle drei Strecken
+aus, fliegt jede mit der echten Steuerung nach, prüft Ziel, Bestzeit, Speichern,
+Laden und den Crash und schreibt Bilder der Anzeige. Das Rendern selbst ist
+unverändert: alle 14 gespeicherten Ansichten bei 1980 × 1058 sind pixelgleich zur
+vorherigen EXE.
 
 ## Was behoben ist
 

@@ -28,7 +28,7 @@ static void offsets(World world,const char* label) {
 }
 static void fly(World& world,const View& view,Race& race,int steps,bool& changed) {
     for(int i=0;i<steps && race.ticking();i++) {
-        if(!race.frozen()) world.fly(view.forward(),1./60,Race::flightSpeed);
+        if(!race.frozen()) race.fly(world,view.forward(),1./60,RacePilot::throttle(race,world));
         changed=race.update(world,1./60) || changed;
     }
 }
@@ -73,8 +73,8 @@ int main() {
         require(race.start(world,view),"Second race did not start");
         changed=false;fly(world,view,race,181,changed);
         for(int i=0;i<60;i++) changed=race.update(world,1./60) || changed;
-        Vec3 ghost;double unit=0;
-        require(race.ghost(world.citadel,race.time,ghost,unit),"No ghost during the race");
+        Vec3 ghost;
+        require(race.ghost(world.citadel,race.time,ghost),"No ghost during the race");
         require(ghost.dot(view.forward())>.05 && ghost.unit().dot(view.forward())>.99,"Ghost is not ahead on the recorded line");
         fly(world,view,race,900,changed);
         require(race.state==Race::State::Finished && !race.newBest && !changed,"A slower run replaced the ghost");
@@ -86,6 +86,35 @@ int main() {
         changed=false;fly(world,view,quick,182,changed);fly(world,view,quick,900,changed);
         require(quick.state==Race::State::Finished && quick.newBest && changed && quick.bestTime<best+.2,"A faster run did not become the ghost");
 
+        // The ship: a head-on approach reaches the wall, a slow one zooms in.
+        {
+            World space(1);View ahead(1);Race ship;ship.beginTrack(space,ahead);
+            require(std::abs(ship.wallRatio(space.citadel)-Race::comfortRatio)<1e-9,"Ship does not start at its settled size");
+            Vec3 nearest=ahead.forward();double shortest=1e300;
+            for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) for(int z=-1;z<=1;z++) {
+                if(!x && !y && !z) continue;
+                Vec3 ray=Vec3{double(x),double(y),double(z)}.unit();double t=0;
+                for(int i=0;i<64 && t<60;i++) {double d=space.citadel.distance(ray*t);if(d<.02) break;t+=d*.8;}
+                if(t<shortest) {shortest=t;nearest=ray;}
+            }
+            World slow=space;Race careful=ship;
+            {World level=space;Race cruise=ship;
+            for(int i=0;i<1800 && cruise.state==Race::State::Recording;i++) {cruise.fly(level,nearest,1./60,1);cruise.update(level,1./60);}
+            require(cruise.state==Race::State::Crashed,"Cruising into a wall did not crash");
+            World gentle=space;Race creep=ship;
+            for(int i=0;i<1800 && creep.state==Race::State::Recording;i++) {creep.fly(gentle,nearest,1./60,Race::slowFactor);creep.update(gentle,1./60);}
+            require(creep.state==Race::State::Recording && gentle.zoomLog10>space.zoomLog10+1,"Slow flight at a wall did not zoom in safely");}
+            int steps=0;
+            for(;steps<7200 && ship.state==Race::State::Recording;steps++) {ship.fly(space,nearest,1./60,Race::boostFactor);ship.update(space,1./60);}
+            require(ship.state==Race::State::Crashed,"Boosting into a wall did not crash");
+            require(ship.wallRatio(space.citadel)<1.0001,"Crash was reported away from the wall");
+            double zoomBefore=slow.zoomLog10;
+            for(int i=0;i<3600 && careful.state==Race::State::Recording;i++) {careful.fly(slow,nearest,1./60,RacePilot::throttle(careful,slow));careful.update(slow,1./60);}
+            require(careful.state==Race::State::Recording,"A careful approach crashed");
+            require(slow.zoomLog10>zoomBefore+2,"A careful approach did not zoom in");
+            require(careful.wallRatio(slow.citadel)>1.5,"Careful approach ended at the wall");
+        }
+
         auto path=std::filesystem::temp_directory_path()/L"aurora-race-test.bin";
         require(race.saveGhost(path),"Ghost was not saved");
         Race loaded;loaded.loadGhost(path);
@@ -96,7 +125,7 @@ int main() {
         bool rejected=false;try {Race bad;bad.loadGhost(path);} catch(const std::exception&) {rejected=true;}
         std::filesystem::remove(path);
         require(rejected,"Damaged ghost file was accepted");
-        std::cout<<"PASS: ghost offsets at zoom 1 and 1e20, track recording, countdown, finish gate, best time and ghost file\n";
+        std::cout<<"PASS: ghost offsets at zoom 1 and 1e20, track recording, countdown, finish gate, best time, ghost file, ship crash and zoom\n";
         return 0;
     } catch(const std::exception& e) {std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}
 }

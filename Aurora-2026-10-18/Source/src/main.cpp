@@ -44,31 +44,55 @@ struct App {
     // Ghost race: N marks start and finish of a track, Enter races the best run.
     Race race;
     std::wstring raceNote;
+    // Fixed tracks. Each is laid out once by the guided flight from a fixed
+    // camera with the race's own flight model; that run is the first ghost.
+    struct RaceTrack {const wchar_t* name;Vec3 camera,target;double seconds;};
+    static constexpr int raceTracks=3;
+    static const RaceTrack& raceTrackInfo(int index) {
+        static const RaceTrack tracks[raceTracks]={
+            {L"OUTER GATE",{3.8,2.6,-5.5},{.4,.7,0},20},
+            {L"CITADEL DIVE",{6.5,5.4,-9.5},{0,0,0},30},
+            {L"LONG DESCENT",{-2.6,1.7,-4.8},{.4,.7,0},45}};
+        return tracks[std::clamp(index,0,raceTracks-1)];
+    }
+    int raceTrack=-1;
+    double raceThrottle=-1;   // self-check only: analog throttle of the layout pilot
+    std::filesystem::path raceFile(const wchar_t* kind,const wchar_t* extension) const {
+        return directory/(std::wstring(L"race-")+kind+L"-"+std::to_wstring(raceTrack+1)+extension);
+    }
     void saveRace() {
-        if(!persist || !race.hasTrack) return;
-        saveFlight(race.startWorld,race.startView,directory/L"race-start.aurora");
-        race.saveGhost(directory/L"race-ghost.bin");
+        if(!persist || !race.hasTrack || raceTrack<0) return;
+        saveFlight(race.startWorld,race.startView,raceFile(L"start",L".aurora"));
+        race.saveGhost(raceFile(L"ghost",L".bin"));
     }
-    void loadRace() {
+    static Race layOutTrack(const RaceTrack& track) {
+        World start(1);start.citadel.reset(track.camera);start.refresh();start.prepare();
+        View direction(1);direction.face(track.target-start.camera);
+        Race laid;laid.beginTrack(start,direction);
+        const double dt=1./60;
+        for(int step=0;step<int(track.seconds*60);step++) {
+            direction.face(RacePilot::steer(start,direction.forward(),dt));
+            laid.fly(start,direction.forward(),dt,RacePilot::throttle(laid,start));start.prepare();laid.update(start,dt);
+            if(laid.state!=Race::State::Recording) throw std::runtime_error("Race track layout hit a wall");
+        }
+        if(!laid.finishTrack(start)) throw std::runtime_error("Race track could not be laid out");
+        laid.stop();laid.newBest=false;return laid;
+    }
+    // Loads the saved best run of a track, or lays the track out again.
+    void selectRaceTrack(int index) {
+        index=std::clamp(index,0,raceTracks-1);
+        if(index==raceTrack && race.hasTrack) return;
+        raceTrack=index;
         try {
-            if(!std::filesystem::exists(directory/L"race-start.aurora") || !std::filesystem::exists(directory/L"race-ghost.bin")) return;
-            World start(1);View direction(1);loadFlight(start,direction,directory/L"race-start.aurora");
-            Race loaded;loaded.loadGhost(directory/L"race-ghost.bin");
+            if(!persist || !std::filesystem::exists(raceFile(L"start",L".aurora")) || !std::filesystem::exists(raceFile(L"ghost",L".bin"))) throw std::runtime_error("No saved track");
+            World start(1);View direction(1);loadFlight(start,direction,raceFile(L"start",L".aurora"));
+            Race loaded;loaded.loadGhost(raceFile(L"ghost",L".bin"));
             loaded.startWorld=std::move(start);loaded.startView=direction;race=std::move(loaded);
-        } catch(const std::exception&) {race=Race();}
+        } catch(const std::exception&) {race=layOutTrack(raceTrackInfo(index));saveRace();}
     }
-    static void loadSaved(App& app) {app.race=Race();app.loadRace();}
-    void raceTrackKey() {
+    void raceStartKey(int index) {
         if(world.kind!=1) {raceNote=L"Races need the Citadel world (T)";dirty=true;return;}
-        if(race.state==Race::State::Recording) {
-            if(race.finishTrack(world)) {raceNote.clear();saveRace();}
-            else raceNote=L"Fly a little further before setting the finish";
-        } else {manual();paused=false;raceNote.clear();race.beginTrack(world,view);}
-        dirty=true;
-    }
-    void raceStartKey() {
-        if(world.kind!=1) {raceNote=L"Races need the Citadel world (T)";dirty=true;return;}
-        if(!race.hasTrack) {raceNote=L"No track yet: N marks the start, N again the finish";dirty=true;return;}
+        selectRaceTrack(index<0?std::max(raceTrack,0):index);
         manual();paused=false;raceNote.clear();race.start(world,view);dirty=true;
     }
     struct FlightFrame {Citadel citadel;View view{1};uint64_t serial=0;int width=0,height=0,quality=1;bool compacted=false;};
@@ -179,9 +203,10 @@ struct App {
             double f=int(keys['W'])-int(keys['S']),r=int(keys['D'])-int(keys['A']),y=int(keys['E'])-int(keys['Q']);
             Vec3 dir=view.forward()*f+view.right()*r+view.frame({0,y,0});
             double rate=speed*(keys[VK_SHIFT]?3:1)/(world.kind==1?1:std::max(1.,std::sqrt(f*f+r*r+y*y)));
-            // Every race run uses the same speed; the countdown only allows looking.
-            if(race.fixedSpeed()) rate=Race::flightSpeed;
-            if(!race.frozen()) world.fly(world.toDomain(dir),dt,rate/(world.kind==1?1:1.25));
+            // A race flies the ship: its own size and speed, W cruise, Shift boost, Ctrl slow.
+            // The countdown only allows looking.
+            if(race.ticking()) {if(!race.frozen()) race.fly(world,dir,dt,raceThrottle>=0?raceThrottle:keys[VK_SHIFT]?Race::boostFactor:keys[VK_CONTROL]?Race::slowFactor:1.);}
+            else world.fly(world.toDomain(dir),dt,rate/(world.kind==1?1:1.25));
         }
         for(const auto& warp:world.warps) view.apply(warp);
         world.warps.clear();
@@ -198,13 +223,13 @@ struct App {
     }
     // A point given relative to the camera: a disc of its real size, or a small
     // pointer at the screen edge when it is outside the view. Dimmed behind walls.
-    void raceMarker(Vec3 offset,double radius,D2D1_COLOR_F color,const std::wstring& label,float labelShift) {
+    void raceMarker(Vec3 offset,double radius,D2D1_COLOR_F color,const std::wstring& label,float labelShift,float largest) {
         const float w=width/uiScale,h=height/uiScale;
         double depth=offset.dot(view.forward()),sx=offset.dot(view.right()),sy=offset.dot(view.up()),size=offset.length();
         if(size<1e-12) return;
         double focal=1.85*h*.5;float x=0,y=0,r=6;bool inside=false;
         if(depth>size*1e-3) {
-            x=float(w*.5+sx/depth*focal);y=float(h*.5-sy/depth*focal);r=float(std::clamp(radius/depth*focal,5.,h*.3));
+            x=float(w*.5+sx/depth*focal);y=float(h*.5-sy/depth*focal);r=float(std::clamp(radius/depth*focal,5.,double(largest)));
             inside=x>30 && x<w-30 && y>30 && y<h-30;
         }
         if(!inside) {
@@ -226,39 +251,52 @@ struct App {
     void raceOverlay(bool showHint) {
         using State=Race::State;
         auto panel=D2D1::ColorF(.025f,.045f,.065f,.87f),ink=D2D1::ColorF(.87f,.94f,.96f),muted=D2D1::ColorF(.52f,.67f,.72f),teal=D2D1::ColorF(.40f,.88f,.84f),gold=D2D1::ColorF(1.f,.80f,.36f);
-        const float w=width/uiScale,x=w*.5f-175,top=showHint && w<1080?130.f:20.f;
+        const float w=width/uiScale,h=height/uiScale,x=w*.5f-175,top=showHint && w<1080?130.f:20.f;
         if(race.state==State::Idle) {
             if(!showHint || world.kind!=1) return;
-            std::wstring hint=!raceNote.empty()?raceNote:race.hasTrack?L"Enter  Race your ghost  ("+raceClock(race.bestTime)+L")      N  New track":L"N  Start a race track here";
+            std::wstring hint=!raceNote.empty()?raceNote:race.hasTrack?L"1  2  3  Race a track      Enter  Again  ("+raceClock(race.bestTime)+L")":L"1  2  3  Race a track against your ghost";
             renderer.rect(x,top,350,36,panel,10);renderer.text(hint,x+16,top+7,326,24,0,raceNote.empty()?muted:gold);
             return;
         }
         if(world.kind==1 && race.state!=State::Recording && race.state!=State::Finished) {
             double scale=std::exp2(std::clamp(race.finish.logUnit-world.citadel.logUnit,-1000.,1000.));
-            raceMarker(raceOffset(world.citadel,race.finish),Race::gateRadius*scale,gold,L"FINISH",-24);
-            Vec3 ghost;double unit=0;
-            if(race.ghost(world.citadel,race.state==State::Running?race.time:0,ghost,unit))
-                raceMarker(ghost,.1*std::exp2(std::clamp(unit-world.citadel.logUnit,-1000.,1000.)),teal,L"GHOST",2);
+            raceMarker(raceOffset(world.citadel,race.finish),Race::gateRadius*scale,gold,L"FINISH",-24,h*.22f);
+            Vec3 ghost;
+            if(race.state!=State::Crashed && race.ghost(world.citadel,race.state==State::Running?race.time:0,ghost))
+                raceMarker(ghost,Race::shipRadius*race.shipScale(world.citadel),teal,L"GHOST",2,34);
         }
         renderer.rect(x,top,350,100,panel,12);
-        std::wstring title,big,detail;D2D1_COLOR_F accent=teal;
+        std::wstring title,big,detail,name=std::wstring(L"  ·  ")+raceTrackInfo(raceTrack).name;D2D1_COLOR_F accent=teal,detailColor=muted;
         switch(race.state) {
         case State::Recording:
-            title=L"NEW TRACK";big=raceClock(race.time);detail=raceNote.empty()?L"Fly to where the finish should be, then press N":raceNote;break;
+            title=L"RECORDING";big=raceClock(race.time);break;
         case State::Countdown:
-            title=L"GET READY";big=std::to_wstring(std::max(1,int(std::ceil(race.countdown))));detail=L"Best  "+raceClock(race.bestTime);break;
+            title=L"GET READY"+name;big=std::to_wstring(std::max(1,int(std::ceil(race.countdown))));detail=L"Best  "+raceClock(race.bestTime);break;
         case State::Running:
-            title=L"RACE";big=raceClock(race.time);detail=L"Best  "+raceClock(race.bestTime)+L"      Enter  Restart";break;
+            title=L"RACE"+name;big=raceClock(race.time);
+            {
+                double wall=race.wallRatio(world.citadel);std::wostringstream text;
+                text<<L"Best  "<<raceClock(race.bestTime)<<L"      Wall  x"<<std::fixed<<std::setprecision(1)<<std::min(wall,99.9)<<L"      Shift fast  Ctrl slow";
+                detail=text.str();if(wall<3) detailColor=gold;
+            }
+            break;
+        case State::Crashed:
+            title=L"CRASHED"+name;accent=gold;big=raceClock(race.finishedTime);detail=L"You hit a wall      Enter  Try again";break;
         default:
             big=raceClock(race.finishedTime);
-            if(race.firstRun) {title=L"TRACK SAVED";detail=L"Enter  Race your ghost      N  New track";}
-            else if(race.newBest) {title=L"NEW BEST";accent=gold;detail=L"-"+raceClock(race.previousBest-race.finishedTime)+L"      Enter  Again";}
-            else {title=L"FINISHED";detail=L"+"+raceClock(race.finishedTime-race.bestTime)+L" behind your ghost      Enter  Again";}
+            if(race.newBest) {title=L"NEW BEST"+name;accent=gold;detail=L"-"+raceClock(race.previousBest-race.finishedTime)+L"      Enter  Again";}
+            else {title=L"FINISHED"+name;detail=(race.finishedTime-race.bestTime<.005?std::wstring(L"Level with your ghost"):L"+"+raceClock(race.finishedTime-race.bestTime)+L" behind your ghost")+L"      Enter  Again";}
         }
-        renderer.text(title,x+18,top+8,200,22,0,accent);
+        renderer.text(title,x+18,top+8,210,22,0,accent);
         renderer.text(L"Backspace  Leave",x+222,top+8,120,22,0,muted);
         renderer.text(big,x+18,top+26,320,38,2,ink);
-        renderer.text(detail,x+18,top+70,326,24,0,muted);
+        renderer.text(detail,x+18,top+70,326,24,0,detailColor);
+        if(race.state==State::Running) {
+            // Distance to the nearest wall in ship radii, on a log scale: empty is contact.
+            float clear=float(std::clamp(std::log2(race.wallRatio(world.citadel))/std::log2(Race::comfortRatio),0.,1.));
+            renderer.rect(x+18,top+94,314,3,D2D1::ColorF(.2f,.28f,.32f,.9f),1.5f);
+            renderer.rect(x+18,top+94,314*clear,3,clear<.5f?gold:teal,1.5f);
+        }
     }
     void overlay() {
         buttons.clear();if(!hud && !race.active()) return;
@@ -310,7 +348,7 @@ struct App {
             renderer.text(v.str(),x+8,toolbarY+21,62,24,0,ink);x+=65;
             button(7,30,L"+");
         }
-        renderer.text(L"WASD move    Q/E down / up    Drag / hold right mouse to look    Shift boost    Wheel speed    Space pause    H hide    N / Enter race",38,toolbarY+60,w-76,24,0,muted);
+        renderer.text(L"WASD move    Q/E down / up    Drag / hold right mouse to look    Shift boost    Wheel speed    Space pause    H hide    1 2 3 race",38,toolbarY+60,w-76,24,0,muted);
         if(!automatic) {
             renderer.rect(w*.5f-5,h*.5f-.5f,10,1,D2D1::ColorF(.8f,.95f,1.f,.48f));
             renderer.rect(w*.5f-.5f,h*.5f-5,1,10,D2D1::ColorF(.8f,.95f,1.f,.48f));
@@ -379,8 +417,8 @@ static LRESULT CALLBACK windowProc(HWND hwnd,UINT message,WPARAM w,LPARAM l) {
             case 'H':app->hud=!app->hud;app->dirty=true;break;
             case 'T':app->action(8);break;
             case VK_F9:app->checkpoint();break;
-            case 'N':app->raceTrackKey();break;
-            case VK_RETURN:app->raceStartKey();break;
+            case '1':case '2':case '3':app->raceStartKey(int(w-'1'));break;
+            case VK_RETURN:app->raceStartKey(-1);break;
             case VK_BACK:app->race.stop();app->raceNote.clear();app->dirty=true;break;
             case VK_ESCAPE:if(app->locked()) app->releaseLook();else if(app->fullscreen) app->setFullscreen();else app->action(1);break;
             case 'W':case 'A':case 'S':case 'D':case 'Q':case 'E':case VK_UP:case VK_DOWN:case VK_LEFT:case VK_RIGHT:app->manual();break;
@@ -796,36 +834,68 @@ static int raceCheck(App& app) {
     std::filesystem::path out=args[at+1];std::filesystem::create_directories(out);
     app.uiScale=1;app.width=1600;app.height=900;app.renderer.resize(1600,900);app.renderer.setQuality(1);
     app.directory=out;app.persist=true;app.world=World(1);app.view=View(1);app.automatic=false;app.paused=false;app.keys.fill(false);
-    auto fail=[](const char* text){throw std::runtime_error(text);};
+    auto fail=[](const std::string& text){throw std::runtime_error(text);};
     auto frames=[&](int count){for(int i=0;i<count;i++) app.update(1./60);};
-    auto picture=[&](const wchar_t* name){app.world.prepare();app.renderer.render(app.world,app.view,0,false);app.overlay();app.renderer.capture((out/name).wstring());};
+    auto picture=[&](const std::wstring& name){app.world.prepare();app.renderer.render(app.world,app.view,0,false);app.overlay();app.renderer.capture((out/name).wstring());};
+    // The player repeats the guided line: same steering, through the real controller.
+    auto drive=[&](int limit,const std::wstring& capture) {
+        app.keys['W']=true;
+        for(int i=0;i<limit && app.race.state==Race::State::Running;i++) {
+            app.view.face(RacePilot::steer(app.world,app.view.forward(),1./60));
+            app.raceThrottle=RacePilot::throttle(app.race,app.world);app.update(1./60);
+            if(!capture.empty() && i==240) picture(capture);
+        }
+        app.keys['W']=false;app.raceThrottle=-1;
+    };
     picture(L"0-idle.png");
-    app.raceTrackKey();app.keys['W']=true;frames(300);app.keys['W']=false;picture(L"1-recording.png");
-    app.raceTrackKey();
-    if(app.race.state!=Race::State::Finished || !app.race.hasTrack) fail("Track was not recorded");
-    double first=app.race.bestTime;picture(L"2-track-saved.png");
-    // Slow run: wait a second after the start, the ghost flies ahead.
-    app.raceStartKey();frames(90);picture(L"3-countdown.png");frames(92);
-    if(app.race.state!=Race::State::Running) fail("Countdown did not end");
-    frames(75);picture(L"4-ghost-ahead.png");
-    Vec3 ghost;double unit=0;
-    if(!app.race.ghost(app.world.citadel,app.race.time,ghost,unit) || ghost.dot(app.view.forward())<=0) fail("Ghost is not ahead of a waiting player");
-    app.keys['W']=true;
-    for(int i=0;i<1200 && app.race.state==Race::State::Running;i++) {app.update(1./60);if(i==120) picture(L"5-chasing.png");}
-    app.keys['W']=false;
-    if(app.race.state!=Race::State::Finished || app.race.newBest) fail("Slow run did not finish behind the ghost");
-    double slow=app.race.finishedTime;picture(L"6-finished-behind.png");
-    // Loading the saved files must give the same track.
-    App::loadSaved(app);
-    if(!app.race.hasTrack || app.race.bestTime!=first) fail("Saved track did not load");
-    app.race.bestTime=first+30;
-    app.raceStartKey();frames(182);app.keys['W']=true;
-    for(int i=0;i<1200 && app.race.state==Race::State::Running;i++) app.update(1./60);
-    app.keys['W']=false;
-    if(app.race.state!=Race::State::Finished || !app.race.newBest) fail("Faster run did not become the best");
-    picture(L"7-new-best.png");
-    std::ofstream report(out/L"race-check.json");
-    report<<"{\"track_seconds\":"<<first<<",\"slow_run_seconds\":"<<slow<<",\"repeat_seconds\":"<<app.race.finishedTime<<",\"ghost_samples\":"<<app.race.best.size()<<",\"passed\":true}\n";
+    std::ofstream report(out/L"race-check.json");report<<"{\"tracks\":[";
+    for(int track=0;track<App::raceTracks;track++) {
+        std::wstring tag=L"track-"+std::to_wstring(track+1);std::string label="Track "+std::to_string(track+1);
+        auto begin=Clock::now();app.raceStartKey(track);
+        double layoutMs=std::chrono::duration<double,std::milli>(Clock::now()-begin).count();
+        if(app.race.state!=Race::State::Countdown) fail(label+" did not start");
+        double par=app.race.bestTime;
+        double startZoom=app.world.zoomLog10;
+        Vec3 toFinish=raceOffset(app.world.citadel,app.race.finish);
+        if(toFinish.length()<.2) fail(label+" is too short");
+        frames(90);picture(tag+L"-0-countdown.png");frames(92);
+        if(app.race.state!=Race::State::Running) fail(label+": countdown did not end");
+        frames(90);picture(tag+L"-1-ghost-ahead.png");
+        Vec3 ghost;
+        if(!app.race.ghost(app.world.citadel,app.race.time,ghost) || ghost.length()<.05) fail(label+": ghost did not leave the start");
+        // Restart and repeat the laid-out line: it must end in the gate at par.
+        app.raceStartKey(-1);frames(182);drive(int(par*60)+600,tag+L"-2-racing.png");
+        if(app.race.state!=Race::State::Finished) fail(label+": the laid-out line does not reach the finish");
+        if(std::abs(app.race.finishedTime-par)>.25) fail(label+": repeating the line gave a different time");
+        picture(tag+L"-3-finished.png");
+        double repeat=app.race.finishedTime,finishZoom=app.world.zoomLog10;
+        // A saved track loads again; a faster run becomes the ghost.
+        app.raceTrack=-1;app.race=Race();app.selectRaceTrack(track);
+        if(!app.race.hasTrack || std::abs(app.race.bestTime-std::min(par,repeat))>1e-9) fail(label+": saved track did not load");
+        app.race.bestTime=par+30;app.raceStartKey(-1);frames(182);drive(int(par*60)+600,L"");
+        if(app.race.state!=Race::State::Finished || !app.race.newBest) fail(label+": faster run did not become the best");
+        // Boosting straight at the nearest wall must end the run.
+        app.raceStartKey(-1);frames(182);
+        Vec3 nearest=app.view.forward();double shortest=1e300;
+        for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) for(int z=-1;z<=1;z++) {
+            if(!x && !y && !z) continue;
+            Vec3 ray=Vec3{double(x),double(y),double(z)}.unit();double t=0;
+            for(int i=0;i<48 && t<40;i++) {double d=app.world.citadel.distance(ray*t);if(d<.02) break;t+=d*.8;}
+            if(t<shortest) {shortest=t;nearest=ray;}
+        }
+        app.view.face(nearest);app.keys['W']=true;app.keys[VK_SHIFT]=true;
+        double closest=1e300;
+        for(int i=0;i<3600 && app.race.state==Race::State::Running;i++) {
+            app.update(1./60);closest=std::min(closest,app.race.wallRatio(app.world.citadel));
+            if(i==20) picture(tag+L"-4-towards-wall.png");
+        }
+        app.keys['W']=false;app.keys[VK_SHIFT]=false;
+        if(app.race.state!=Race::State::Crashed) fail(label+": boosting into a wall did not crash");
+        double crashSeconds=app.race.finishedTime;picture(tag+L"-5-crashed.png");
+        report<<(track?",":"")<<"{\"crash_seconds\":"<<crashSeconds<<",\"par_seconds\":"<<par<<",\"repeat_seconds\":"<<repeat<<",\"layout_ms\":"<<layoutMs<<",\"ghost_samples\":"<<app.race.best.size()
+            <<",\"finish_distance_start_units\":"<<toFinish.length()<<",\"start_zoom_log10\":"<<startZoom<<",\"finish_zoom_log10\":"<<finishZoom<<"}";
+    }
+    report<<"],\"passed\":true}\n";
     return 0;
 }
 
@@ -944,7 +1014,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
     try {
         App app;app.persist=!benchmark;
         wchar_t executable[MAX_PATH]{};GetModuleFileName(nullptr,executable,MAX_PATH);app.directory=std::filesystem::path(executable).parent_path();
-        if(!benchmark) {app.restore();app.loadRace();}
+        if(!benchmark) app.restore();
         if(!benchmark && std::wstring(commandLine).find(L"--load-flight")!=std::wstring::npos) {
             loadFlight(app.world,app.view,app.directory/L"last-flight.aurora");
             // AURORA_AUTOPILOT=1 continues a loaded flight in guided mode (diagnostic flights).
