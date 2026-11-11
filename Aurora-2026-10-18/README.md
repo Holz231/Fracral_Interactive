@@ -42,9 +42,9 @@ drei festen Strecken:
 
 | Taste | Strecke | Vorgabezeit | Zoom am Ziel |
 |---|---|---:|---:|
-| **1** | Outer Gate | 0:19,23 | etwa 160x |
-| **2** | Citadel Dive | 0:29,37 | etwa 40x |
-| **3** | Long Descent | 0:44,55 | etwa 10^5 |
+| **1** | Outer Gate | 0:18,83 | etwa 70x |
+| **2** | Citadel Dive | 0:29,03 | etwa 2.500x |
+| **3** | Long Descent | 0:44,28 | etwa 3.300x |
 
 - **1**, **2** oder **3** startet die Strecke: Du stehst am Start, drei Sekunden
   Countdown (umsehen geht, fliegen nicht), dann los. **Enter** startet die zuletzt
@@ -56,25 +56,36 @@ drei festen Strecken:
   dorthin ist frei, Abkürzungen sind erlaubt.
 
 **Das Schiff.** Im freien Flug schrumpft die Kamera beim Annähern sofort mit und
-erreicht eine Wand deshalb nie. Im Rennen fliegst du ein Schiff mit eigener Größe.
-Es passt sich der Umgebung an, aber mit Verzögerung: In Ruhe stellt es sich so ein,
-dass die nächste Wand 16 Schiffsradien entfernt ist, und holt pro Sekunde etwa 40 %
-des Unterschieds auf. Daraus folgt:
+erreicht eine Wand deshalb nie. Im Rennen fliegst du ein sichtbares Schiff, das vor
+der Kamera herfliegt (Verfolgerkamera, zwölf Schiffsradien dahinter und etwas
+darüber). Die blasse Kugel um das Schiff ist sein Rumpf für die Kollision.
+**Berührt diese Kugel eine Oberfläche, ist der Lauf vorbei** (CRASHED, Enter für
+einen neuen Versuch). Gerechnet wird mit dem Abstand des Schiffs zur Oberfläche,
+nicht mit dem der Kamera.
 
-- Fliegst du schnell auf eine Wand zu, kommt das Schrumpfen nicht hinterher. Bei
-  einem Schiffsradius Abstand ist der Lauf vorbei (**CRASHED**, Enter für einen
-  neuen Versuch).
+Das Schiff hat eine eigene Größe, die sich der Umgebung anpasst, aber mit
+Verzögerung: In Ruhe stellt es sich so ein, dass die nächste Wand 16 Schiffsradien
+entfernt ist, und holt pro Sekunde etwa ein Viertel des Unterschieds auf.
+
+- Fliegst du schnell auf eine Wand zu, kommt das Schrumpfen nicht hinterher: Die
+  Wand kommt sichtbar näher, bis das Schiff sie trifft.
 - Näherst du dich langsam oder flach, schrumpft das Schiff rechtzeitig mit und du
-  tauchst in die Details ein. So führt Strecke 3 bis etwa 10^5.
+  tauchst in die Details ein. So führen die Strecken 2 und 3 mehrere tausendfach
+  hinein.
 - In offenem Raum wächst das Schiff wieder und wird damit schneller.
 
-Tempo: **W** normal, **Shift** doppelt, **Strg** langsam (30 %). Shift und Mausrad
-des freien Flugs gelten im Rennen nicht. Die Anzeige zeigt `Wall x…`, den Abstand
-zur nächsten Wand in Schiffsradien, und darunter einen Balken; unter x3 wird die
-Zahl gelb, bei x1 ist es ein Crash. Frontal auf eine Wand zu bleibt bei normalem
-Tempo nur wenige Sekunden, mit Shift etwa eine. Geist und Ziel sind auch hinter
-Wänden zu sehen (dann blasser) und zeigen am Bildrand die Richtung, wenn sie
-außerhalb des Bildes liegen.
+Tempo: **W** normal, **Shift** doppelt (Triebwerke leuchten orange), **Strg**
+langsam (30 %). Shift und Mausrad des freien Flugs gelten im Rennen nicht. Die
+Anzeige zeigt `Wall x…`, den Abstand des Schiffs zur nächsten Oberfläche in
+Schiffsradien, und darunter einen Balken; unter x3 wird die Zahl gelb, bei x1 ist
+es ein Crash. Der Geist ist eine Kugel in Schiffsgröße an der Stelle, an der dein
+bestes Schiff war. Geist und Ziel sind auch hinter Wänden zu sehen (dann blasser)
+und zeigen am Bildrand die Richtung, wenn sie außerhalb des Bildes liegen.
+
+Grenzen: Das Schiff ist ein flaches Symbol über dem Bild. Es wird nicht von Wänden
+verdeckt und wirft keinen Schatten. Der Wandabstand ist die Abstandsschätzung des
+Fraktals; sie ist vorsichtig, deshalb kann der Crash etwas früher kommen, als die
+Kugel im Bild die Wand zu berühren scheint.
 
 Start und bester Lauf jeder Strecke liegen in `race-start-<n>.aurora` und
 `race-ghost-<n>.bin` neben der EXE. Löschst du beide Dateien einer Strecke, wird

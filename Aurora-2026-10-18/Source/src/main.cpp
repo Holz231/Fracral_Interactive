@@ -72,10 +72,10 @@ struct App {
         const double dt=1./60;
         for(int step=0;step<int(track.seconds*60);step++) {
             direction.face(RacePilot::steer(start,direction.forward(),dt));
-            laid.fly(start,direction.forward(),dt,RacePilot::throttle(laid,start));start.prepare();laid.update(start,dt);
+            laid.fly(start,direction.forward(),dt,RacePilot::throttle(laid,start,direction));start.prepare();laid.update(start,direction,dt);
             if(laid.state!=Race::State::Recording) throw std::runtime_error("Race track layout hit a wall");
         }
-        if(!laid.finishTrack(start)) throw std::runtime_error("Race track could not be laid out");
+        if(!laid.finishTrack(start,direction)) throw std::runtime_error("Race track could not be laid out");
         laid.stop();laid.newBest=false;return laid;
     }
     // Loads the saved best run of a track, or lays the track out again.
@@ -213,7 +213,7 @@ struct App {
         world.prepare();dirty=true;
         if(race.ticking()) {
             if(world.kind!=1 || automatic) race.stop();
-            else if(race.update(world,dt)) saveRace();
+            else if(race.update(world,view,dt)) saveRace();
         }
     }
     static std::wstring raceClock(double seconds) {
@@ -248,6 +248,29 @@ struct App {
         renderer.rect(x-4,y-4,8,8,D2D1::ColorF(color.r,color.g,color.b,.95f*alpha),4);
         renderer.text(label,std::clamp(x+10,8.f,w-120),std::clamp(y+labelShift,8.f,h-30),120,22,0,D2D1::ColorF(color.r,color.g,color.b,alpha));
     }
+    // The player's ship at its true size and position in front of the chase camera:
+    // two engine pods, a cockpit between them and the engine glow.
+    void raceShip(bool boosting,bool wrecked) {
+        const float w=width/uiScale,h=height/uiScale;
+        Vec3 ship=race.shipOffset(world.citadel,view);double depth=ship.dot(view.forward());
+        if(depth<=0) return;
+        float focal=float(1.85*h*.5),cx=float(w*.5+ship.dot(view.right())/depth*focal),cy=float(h*.5-ship.dot(view.up())/depth*focal);
+        float r=float(race.hullRadius(world.citadel)/depth*focal);
+        auto hull=wrecked?D2D1::ColorF(.30f,.22f,.18f):D2D1::ColorF(.80f,.85f,.88f),dark=D2D1::ColorF(.10f,.14f,.18f);
+        auto glow=wrecked?D2D1::ColorF(1.f,.45f,.15f,.85f):boosting?D2D1::ColorF(1.f,.72f,.30f,.95f):D2D1::ColorF(.40f,.88f,.84f,.9f);
+        // The collision sphere, faintly, so contact with a wall can be judged.
+        renderer.rect(cx-r,cy-r,2*r,2*r,D2D1::ColorF(glow.r,glow.g,glow.b,wrecked?.30f:.10f),r);
+        for(int side=-1;side<=1;side+=2) {
+            float px=cx+side*r*.62f;
+            renderer.rect(px-r*.24f,cy-r*.30f,r*.48f,r*.60f,dark,r*.2f);
+            renderer.rect(px-r*.19f,cy-r*.25f,r*.38f,r*.50f,hull,r*.16f);
+            float g=r*(boosting?.17f:.12f);
+            renderer.rect(px-g,cy-g,2*g,2*g,glow,g);
+        }
+        renderer.rect(cx-r*.62f,cy-r*.05f,r*1.24f,r*.10f,dark,r*.05f);
+        renderer.rect(cx-r*.20f,cy-r*.16f,r*.40f,r*.36f,dark,r*.16f);
+        renderer.rect(cx-r*.15f,cy-r*.12f,r*.30f,r*.28f,hull,r*.13f);
+    }
     void raceOverlay(bool showHint) {
         using State=Race::State;
         auto panel=D2D1::ColorF(.025f,.045f,.065f,.87f),ink=D2D1::ColorF(.87f,.94f,.96f),muted=D2D1::ColorF(.52f,.67f,.72f),teal=D2D1::ColorF(.40f,.88f,.84f),gold=D2D1::ColorF(1.f,.80f,.36f);
@@ -263,8 +286,10 @@ struct App {
             raceMarker(raceOffset(world.citadel,race.finish),Race::gateRadius*scale,gold,L"FINISH",-24,h*.22f);
             Vec3 ghost;
             if(race.state!=State::Crashed && race.ghost(world.citadel,race.state==State::Running?race.time:0,ghost))
-                raceMarker(ghost,Race::shipRadius*race.shipScale(world.citadel),teal,L"GHOST",2,34);
+                raceMarker(ghost,race.hullRadius(world.citadel),teal,L"GHOST",2,60);
         }
+        if(world.kind==1 && (race.state==State::Countdown || race.state==State::Running || race.state==State::Crashed))
+            raceShip(race.state==State::Running && keys[VK_SHIFT],race.state==State::Crashed);
         renderer.rect(x,top,350,100,panel,12);
         std::wstring title,big,detail,name=std::wstring(L"  ·  ")+raceTrackInfo(raceTrack).name;D2D1_COLOR_F accent=teal,detailColor=muted;
         switch(race.state) {
@@ -275,13 +300,13 @@ struct App {
         case State::Running:
             title=L"RACE"+name;big=raceClock(race.time);
             {
-                double wall=race.wallRatio(world.citadel);std::wostringstream text;
+                double wall=race.wallRatio(world,view);std::wostringstream text;
                 text<<L"Best  "<<raceClock(race.bestTime)<<L"      Wall  x"<<std::fixed<<std::setprecision(1)<<std::min(wall,99.9)<<L"      Shift fast  Ctrl slow";
                 detail=text.str();if(wall<3) detailColor=gold;
             }
             break;
         case State::Crashed:
-            title=L"CRASHED"+name;accent=gold;big=raceClock(race.finishedTime);detail=L"You hit a wall      Enter  Try again";break;
+            title=L"CRASHED"+name;accent=gold;big=raceClock(race.finishedTime);detail=L"Your ship hit the wall      Enter  Try again";break;
         default:
             big=raceClock(race.finishedTime);
             if(race.newBest) {title=L"NEW BEST"+name;accent=gold;detail=L"-"+raceClock(race.previousBest-race.finishedTime)+L"      Enter  Again";}
@@ -293,7 +318,7 @@ struct App {
         renderer.text(detail,x+18,top+70,326,24,0,detailColor);
         if(race.state==State::Running) {
             // Distance to the nearest wall in ship radii, on a log scale: empty is contact.
-            float clear=float(std::clamp(std::log2(race.wallRatio(world.citadel))/std::log2(Race::comfortRatio),0.,1.));
+            float clear=float(std::clamp(std::log2(std::max(race.wallRatio(world,view),1.))/std::log2(Race::comfortRatio),0.,1.));
             renderer.rect(x+18,top+94,314,3,D2D1::ColorF(.2f,.28f,.32f,.9f),1.5f);
             renderer.rect(x+18,top+94,314*clear,3,clear<.5f?gold:teal,1.5f);
         }
@@ -842,7 +867,7 @@ static int raceCheck(App& app) {
         app.keys['W']=true;
         for(int i=0;i<limit && app.race.state==Race::State::Running;i++) {
             app.view.face(RacePilot::steer(app.world,app.view.forward(),1./60));
-            app.raceThrottle=RacePilot::throttle(app.race,app.world);app.update(1./60);
+            app.raceThrottle=RacePilot::throttle(app.race,app.world,app.view);app.update(1./60);
             if(!capture.empty() && i==240) picture(capture);
         }
         app.keys['W']=false;app.raceThrottle=-1;
@@ -886,7 +911,7 @@ static int raceCheck(App& app) {
         app.view.face(nearest);app.keys['W']=true;app.keys[VK_SHIFT]=true;
         double closest=1e300;
         for(int i=0;i<3600 && app.race.state==Race::State::Running;i++) {
-            app.update(1./60);closest=std::min(closest,app.race.wallRatio(app.world.citadel));
+            app.update(1./60);closest=std::min(closest,app.race.wallRatio(app.world,app.view));
             if(i==20) picture(tag+L"-4-towards-wall.png");
         }
         app.keys['W']=false;app.keys[VK_SHIFT]=false;
