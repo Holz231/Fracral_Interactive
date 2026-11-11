@@ -72,7 +72,7 @@ struct App {
         const double dt=1./60;
         for(int step=0;step<int(track.seconds*60);step++) {
             direction.face(RacePilot::steer(start,direction.forward(),dt));
-            laid.fly(start,direction.forward(),dt,RacePilot::throttle(laid,start,direction));start.prepare();laid.update(start,direction,dt);
+            laid.fly(start,direction.forward(),dt,RacePilot::throttle(laid,start,direction));laid.adapt(start,direction,dt);start.prepare();laid.update(start,direction,dt);
             if(laid.state!=Race::State::Recording) throw std::runtime_error("Race track layout hit a wall");
         }
         if(!laid.finishTrack(start,direction)) throw std::runtime_error("Race track could not be laid out");
@@ -205,7 +205,10 @@ struct App {
             double rate=speed*(keys[VK_SHIFT]?3:1)/(world.kind==1?1:std::max(1.,std::sqrt(f*f+r*r+y*y)));
             // A race flies the ship: its own size and speed, W cruise, Shift boost, Ctrl slow.
             // The countdown only allows looking.
-            if(race.ticking()) {if(!race.frozen()) race.fly(world,dir,dt,raceThrottle>=0?raceThrottle:keys[VK_SHIFT]?Race::boostFactor:keys[VK_CONTROL]?Race::slowFactor:1.);}
+            if(race.ticking()) {
+                if(!race.frozen()) race.fly(world,dir,dt,raceThrottle>=0?raceThrottle:keys[VK_SHIFT]?Race::boostFactor:keys[VK_CONTROL]?Race::slowFactor:1.);
+                race.adapt(world,view,dt);
+            }
             else world.fly(world.toDomain(dir),dt,rate/(world.kind==1?1:1.25));
         }
         for(const auto& warp:world.warps) view.apply(warp);
@@ -872,6 +875,8 @@ static int raceCheck(App& app) {
         }
         app.keys['W']=false;app.raceThrottle=-1;
     };
+    // Step exactly to the end of the countdown, so a repeated line starts like the laid-out one.
+    auto ready=[&](){for(int i=0;i<400 && app.race.state==Race::State::Countdown;i++) app.update(1./60);};
     picture(L"0-idle.png");
     std::ofstream report(out/L"race-check.json");report<<"{\"tracks\":[";
     for(int track=0;track<App::raceTracks;track++) {
@@ -889,7 +894,7 @@ static int raceCheck(App& app) {
         Vec3 ghost;
         if(!app.race.ghost(app.world.citadel,app.race.time,ghost) || ghost.length()<.05) fail(label+": ghost did not leave the start");
         // Restart and repeat the laid-out line: it must end in the gate at par.
-        app.raceStartKey(-1);frames(182);drive(int(par*60)+600,tag+L"-2-racing.png");
+        app.raceStartKey(-1);ready();drive(int(par*60)+600,tag+L"-2-racing.png");
         if(app.race.state!=Race::State::Finished) fail(label+": the laid-out line does not reach the finish");
         if(std::abs(app.race.finishedTime-par)>.25) fail(label+": repeating the line gave a different time");
         picture(tag+L"-3-finished.png");
@@ -897,24 +902,25 @@ static int raceCheck(App& app) {
         // A saved track loads again; a faster run becomes the ghost.
         app.raceTrack=-1;app.race=Race();app.selectRaceTrack(track);
         if(!app.race.hasTrack || std::abs(app.race.bestTime-std::min(par,repeat))>1e-9) fail(label+": saved track did not load");
-        app.race.bestTime=par+30;app.raceStartKey(-1);frames(182);drive(int(par*60)+600,L"");
+        app.race.bestTime=par+30;app.raceStartKey(-1);ready();drive(int(par*60)+600,L"");
         if(app.race.state!=Race::State::Finished || !app.race.newBest) fail(label+": faster run did not become the best");
-        // Boosting straight at the nearest wall must end the run.
-        app.raceStartKey(-1);frames(182);
-        Vec3 nearest=app.view.forward();double shortest=1e300;
-        for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) for(int z=-1;z<=1;z++) {
-            if(!x && !y && !z) continue;
-            Vec3 ray=Vec3{double(x),double(y),double(z)}.unit();double t=0;
-            for(int i=0;i<48 && t<40;i++) {double d=app.world.citadel.distance(ray*t);if(d<.02) break;t+=d*.8;}
-            if(t<shortest) {shortest=t;nearest=ray;}
-        }
-        app.view.face(nearest);app.keys['W']=true;app.keys[VK_SHIFT]=true;
+        // Boosting at the nearest wall, steering at it all the way, must end the run.
+        app.raceStartKey(-1);ready();
+        // Turning would swing the ship on its arm, so the keys move it sideways,
+        // up or forward: whichever points best at the wall.
+        app.keys[VK_SHIFT]=true;
         double closest=1e300;
         for(int i=0;i<3600 && app.race.state==Race::State::Running;i++) {
+            Vec3 wall=app.race.nearestWall(app.world,app.view);
+            const int codes[6]={'W','S','D','A','E','Q'};
+            Vec3 moves[6]={app.view.forward(),app.view.forward()*-1.,app.view.right(),app.view.right()*-1.,app.view.frame({0,1,0}),app.view.frame({0,-1,0})};
+            int chosen=0;for(int k=1;k<6;k++) if(moves[k].dot(wall)>moves[chosen].dot(wall)) chosen=k;
+            for(int k=0;k<6;k++) app.keys[codes[k]]=k==chosen;
             app.update(1./60);closest=std::min(closest,app.race.wallRatio(app.world,app.view));
             if(i==20) picture(tag+L"-4-towards-wall.png");
         }
-        app.keys['W']=false;app.keys[VK_SHIFT]=false;
+        for(int code:{'W','S','D','A','E','Q'}) app.keys[code]=false;
+        app.keys[VK_SHIFT]=false;
         if(app.race.state!=Race::State::Crashed) fail(label+": boosting into a wall did not crash");
         double crashSeconds=app.race.finishedTime;picture(tag+L"-5-crashed.png");
         report<<(track?",":"")<<"{\"crash_seconds\":"<<crashSeconds<<",\"par_seconds\":"<<par<<",\"repeat_seconds\":"<<repeat<<",\"layout_ms\":"<<layoutMs<<",\"ghost_samples\":"<<app.race.best.size()

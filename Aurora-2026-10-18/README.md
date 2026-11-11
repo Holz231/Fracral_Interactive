@@ -42,9 +42,9 @@ drei festen Strecken:
 
 | Taste | Strecke | Vorgabezeit | Zoom am Ziel |
 |---|---|---:|---:|
-| **1** | Outer Gate | 0:18,83 | etwa 70x |
-| **2** | Citadel Dive | 0:29,03 | etwa 2.500x |
-| **3** | Long Descent | 0:44,28 | etwa 3.300x |
+| **1** | Outer Gate | 0:19,50 | etwa 60x |
+| **2** | Citadel Dive | 0:29,37 | etwa 6.000x |
+| **3** | Long Descent | 0:44,35 | etwa 600x |
 
 - **1**, **2** oder **3** startet die Strecke: Du stehst am Start, drei Sekunden
   Countdown (umsehen geht, fliegen nicht), dann los. **Enter** startet die zuletzt
@@ -60,22 +60,28 @@ erreicht eine Wand deshalb nie. Im Rennen fliegst du ein sichtbares Schiff, das 
 der Kamera herfliegt (Verfolgerkamera, zwölf Schiffsradien dahinter und etwas
 darüber). Die blasse Kugel um das Schiff ist sein Rumpf für die Kollision.
 **Berührt diese Kugel eine Oberfläche, ist der Lauf vorbei** (CRASHED, Enter für
-einen neuen Versuch). Gerechnet wird mit dem Abstand des Schiffs zur Oberfläche,
-nicht mit dem der Kamera.
+einen neuen Versuch). Gerechnet wird mit dem echten Abstand des Schiffs zur
+Oberfläche: Vom Schiffsmittelpunkt aus werden 64 Strahlen in alle Richtungen bis
+zur Oberfläche verfolgt, der kürzeste zählt. Die schnelle Abstandsschätzung des
+Fraktals allein wäre dafür zu vorsichtig; sie liegt nahe an Wänden bei weniger als
+der Hälfte des echten Abstands.
 
 Das Schiff hat eine eigene Größe, die sich der Umgebung anpasst, aber mit
 Verzögerung: In Ruhe stellt es sich so ein, dass die nächste Wand 16 Schiffsradien
-entfernt ist, und holt pro Sekunde etwa ein Viertel des Unterschieds auf.
+entfernt ist, und holt pro Sekunde etwa die Hälfte des Unterschieds auf. Beim
+Schrumpfen und Wachsen bleibt das Schiff an seinem Ort; die Kamera rückt nach.
 
 - Fliegst du schnell auf eine Wand zu, kommt das Schrumpfen nicht hinterher: Die
   Wand kommt sichtbar näher, bis das Schiff sie trifft.
 - Näherst du dich langsam oder flach, schrumpft das Schiff rechtzeitig mit und du
-  tauchst in die Details ein. So führen die Strecken 2 und 3 mehrere tausendfach
-  hinein.
+  tauchst in die Details ein. So führen die Strecken mehrere hundert- bis
+  tausendfach hinein.
+- Fliegst du in eine Öffnung, die sich immer weiter verfeinert, kommst du auch
+  schnell hinein: Dort ist keine Wand im Weg, das Schiff schrumpft einfach mit.
 - In offenem Raum wächst das Schiff wieder und wird damit schneller.
 
 Tempo: **W** normal, **Shift** doppelt (Triebwerke leuchten orange), **Strg**
-langsam (30 %). Shift und Mausrad des freien Flugs gelten im Rennen nicht. Die
+langsam (40 %). Shift und Mausrad des freien Flugs gelten im Rennen nicht. Die
 Anzeige zeigt `Wall x…`, den Abstand des Schiffs zur nächsten Oberfläche in
 Schiffsradien, und darunter einen Balken; unter x3 wird die Zahl gelb, bei x1 ist
 es ein Crash. Der Geist ist eine Kugel in Schiffsgröße an der Stelle, an der dein
@@ -83,9 +89,10 @@ bestes Schiff war. Geist und Ziel sind auch hinter Wänden zu sehen (dann blasse
 und zeigen am Bildrand die Richtung, wenn sie außerhalb des Bildes liegen.
 
 Grenzen: Das Schiff ist ein flaches Symbol über dem Bild. Es wird nicht von Wänden
-verdeckt und wirft keinen Schatten. Der Wandabstand ist die Abstandsschätzung des
-Fraktals; sie ist vorsichtig, deshalb kann der Crash etwas früher kommen, als die
-Kugel im Bild die Wand zu berühren scheint.
+verdeckt und wirft keinen Schatten, deshalb ist die Tiefe schwer zu schätzen (siehe
+`ROADMAP.md`, Punkt 2). Sehr dünne Spitzen zwischen zwei Messstrahlen können
+übersehen werden. Dreht man die Sicht, schwenkt das Schiff an seinem Arm vor der
+Kamera mit und kann so auch seitlich in eine Wand geraten.
 
 Start und bester Lauf jeder Strecke liegen in `race-start-<n>.aurora` und
 `race-ghost-<n>.bin` neben der EXE. Löschst du beide Dateien einer Strecke, wird
@@ -93,7 +100,8 @@ sie beim nächsten Start neu ausgelegt und die Vorgabezeit gilt wieder. Die
 Positionen des Geists sind wie die Kamera über ihre Referenzbahn gespeichert und
 bleiben auch bei sehr tiefem Zoom genau (Test bei 10^20). Geprüft mit `ctest`
 (Test `race_ghost`: Positionen, Ablauf, Crash bei schnellem und Zoom bei langsamem
-Anflug) und `AuroraFractal.exe --race-check <Ordner>`: Das legt alle drei Strecken
+Anflug; beim Crash liegt die Oberfläche unabhängig nachgemessen zwischen 0,6 und
+1,15 Rumpfradien vom Schiffsmittelpunkt) und `AuroraFractal.exe --race-check <Ordner>`: Das legt alle drei Strecken
 aus, fliegt jede mit der echten Steuerung nach, prüft Ziel, Bestzeit, Speichern,
 Laden und den Crash und schreibt Bilder der Anzeige. Das Rendern selbst ist
 unverändert: alle 14 gespeicherten Ansichten bei 1980 × 1058 sind pixelgleich zur

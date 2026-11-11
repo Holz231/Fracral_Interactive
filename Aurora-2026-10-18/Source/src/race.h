@@ -41,6 +41,29 @@ inline Vec3 raceOffset(const Citadel& camera,const RacePoint& point) {
     }
     return haveLinear?linearOffset:haveResolved?resolvedOffset:Vec3{};
 }
+// Distance from a point (relative to the camera, camera units) to the nearest
+// surface. Citadel::distance is a deliberately cautious estimate, several times
+// too small near a wall. Rays in all directions are marched with it until they
+// arrive; the shortest one is the distance a hull actually has to spare.
+inline double raceSurfaceDistance(const Citadel& camera,Vec3 centre,double limit,double contact,Vec3* direction=nullptr) {
+    double nearest=limit;
+    const int rays=64;
+    for(int i=0;i<rays;i++) {
+        // Fibonacci sphere: even coverage without clustering at the poles.
+        double z=1-(2*i+1)/double(rays),ring=std::sqrt(std::max(0.,1-z*z)),angle=i*2.399963229728653;
+        Vec3 ray{ring*std::cos(angle),z,ring*std::sin(angle)};double t=0;
+        // The cautious estimate closes in on a surface only gradually. A ray that
+        // runs out of steps has still covered t without meeting anything.
+        // Far surfaces only need their distance to a few percent.
+        for(int step=0;step<96 && t<nearest;step++) {
+            double d=camera.distance(centre+ray*t);
+            if(d<std::max(contact,t*.02)) break;
+            t+=d;
+        }
+        if(t<nearest) {nearest=t;if(direction) *direction=ray;}
+    }
+    return nearest;
+}
 // Time trial from a start snapshot to a finish gate, flown by a visible ship
 // in front of a chase camera. The free camera shrinks instantly as it nears a
 // wall and never arrives. The ship has a size of its own that follows the
@@ -49,11 +72,11 @@ inline Vec3 raceOffset(const Citadel& camera,const RacePoint& point) {
 struct Race {
     enum class State {Idle,Recording,Countdown,Running,Finished,Crashed};
     // Ship radius and speed in ship units.
-    static constexpr double shipRadius=.06,shipSpeed=1.2,boostFactor=2,slowFactor=.3;
+    static constexpr double shipRadius=.06,shipSpeed=.5,boostFactor=2,slowFactor=.4;
     // The camera follows chaseDistance radii behind and a little above the ship.
     static constexpr double chaseDistance=12,chaseDrop=.22;
     // The ship settles at comfortRatio radii from the nearest wall, at adaptRate per second.
-    static constexpr double comfortRatio=16,adaptRate=.3;
+    static constexpr double comfortRatio=16,adaptRate=.8,sensedRatio=40;
     static constexpr double sampleInterval=.05,countdownSeconds=3,gateRadius=.4,minimumSeconds=2,maximumSeconds=900;
     State state=State::Idle;
     bool hasTrack=false,newBest=false;
@@ -74,9 +97,16 @@ struct Race {
         return (view.forward()-view.up()*chaseDrop)*(chaseDistance*shipRadius*shipScale(camera));
     }
     double hullRadius(const Citadel& camera) const {return shipRadius*shipScale(camera);}
-    // Distance from the ship's centre to the nearest surface in ship radii; 1 is contact.
+    // Real distance from the ship's centre to the nearest surface in ship radii;
+    // 1 is the hull touching. Measured up to sensedRatio radii.
     double wallRatio(const World& world,const View& view) const {
-        return world.citadel.distance(shipOffset(world.citadel,view))/hullRadius(world.citadel);
+        double hull=hullRadius(world.citadel);
+        return raceSurfaceDistance(world.citadel,shipOffset(world.citadel,view),hull*sensedRatio,hull*.02)/hull;
+    }
+    // Direction from the ship to the closest surface it can sense.
+    Vec3 nearestWall(const World& world,const View& view) const {
+        double hull=hullRadius(world.citadel);Vec3 direction=view.forward();
+        raceSurfaceDistance(world.citadel,shipOffset(world.citadel,view),hull*400,hull*.05,&direction);return direction;
     }
     // The ship's position as a recorded point with its own reference orbit.
     RacePoint shipPoint(const World& world,const View& view,double seconds) const {
@@ -86,7 +116,8 @@ struct Race {
     }
     void settle(const World& world,const View& view) {
         shipLogUnit=world.citadel.logUnit+std::log2(.4/(comfortRatio*shipRadius));
-        for(int i=0;i<6;i++) shipLogUnit+=std::log2(std::max(wallRatio(world,view),1e-6)/comfortRatio);
+        // Damped: a larger ship also sits further ahead, so the ratio is not simply inverse to its size.
+        for(int i=0;i<48;i++) shipLogUnit+=.4*std::log2(std::max(wallRatio(world,view),1e-6)/comfortRatio);
     }
     void stop() {state=State::Idle;current.clear();}
     void beginTrack(const World& world,const View& view) {
@@ -103,6 +134,19 @@ struct Race {
             if(!world.advance(ray*step)) break;
             remaining=(remaining-step)*std::exp2(before-world.citadel.logUnit);
         }
+    }
+    // The ship follows the surrounding scale, once per step after flying. It
+    // stays where it is while its size changes: the camera on its arm moves
+    // instead. (Were the ship pulled back as it shrinks, that retreat would
+    // cancel a head-on approach and no wall could ever be reached.)
+    void adapt(World& world,const View& view,double dt) {
+        if(state!=State::Recording && state!=State::Running) return;
+        double ratio=wallRatio(world,view);
+        if(ratio<1) return;
+        Vec3 before=shipOffset(world.citadel,view);
+        shipLogUnit+=std::log2(ratio/comfortRatio)*(1-std::exp(-adaptRate*dt));
+        Vec3 shift=before-shipOffset(world.citadel,view);
+        if(shift.length()>1e-12) world.advance(shift);
     }
     // Ship distance to the finish in finish units; gateRadius is its free space.
     double finishDistance(const World& world,const View& view) const {
@@ -140,9 +184,7 @@ struct Race {
         if(state!=State::Recording && state!=State::Running) return false;
         time+=dt;
         if(time>maximumSeconds) {stop();return false;}
-        double ratio=wallRatio(world,view);
-        if(ratio<1) {finishedTime=time;current.clear();state=State::Crashed;return false;}
-        shipLogUnit+=std::log2(ratio/comfortRatio)*(1-std::exp(-adaptRate*dt));
+        if(wallRatio(world,view)<1) {finishedTime=time;current.clear();state=State::Crashed;return false;}
         if(state==State::Running && finishDistance(world,view)<gateRadius) {
             current.push_back(shipPoint(world,view,time));finishedTime=time;previousBest=bestTime;
             newBest=time<bestTime;
@@ -198,7 +240,7 @@ struct Race {
         best=std::move(points);finish=std::move(gate);bestTime=seconds;hasTrack=true;state=State::Idle;current.clear();
     }
 private:
-    static constexpr char magic[12]={'A','U','R','O','R','A','R','A','C','E','3','\n'};
+    static constexpr char magic[12]={'A','U','R','O','R','A','R','A','C','E','4','\n'};
 };
 // Lays out a track: the guided dive's steering, slowing near walls so that the
 // ship has time to shrink instead of hitting them.
