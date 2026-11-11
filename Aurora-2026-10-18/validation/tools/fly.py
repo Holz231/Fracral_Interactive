@@ -18,15 +18,17 @@ def main():
     ap.add_argument('--every', type=int, default=0)
     ap.add_argument('--env', action='append', default=[])
     ap.add_argument('--fixtures', default='corner,heavy69,user-root-slow,user-preview0817-slow,user-root-last,interior')
+    ap.add_argument('--output', default=os.path.join(ROOT, 'results'))
     a = ap.parse_args()
     env = os.environ.copy()
     env.update(dict(e.split('=', 1) for e in a.env))
     exe = os.path.abspath(a.exe)
+    output_root = os.path.abspath(a.output)
     w, h = a.size.split('x')
-    allms = []
+    allms = []; failures = 0
     print(f"{'fixture':24s} {'median':>7s} {'p95':>7s} {'max':>7s} {'>16.0':>6s} {'>14.5':>6s} {'zoom0':>6s} {'zoom1':>6s}")
     for n in a.fixtures.split(','):
-        out = os.path.join(ROOT, 'results', f'{a.tag}-{n}')
+        out = os.path.join(output_root, f'{a.tag}-{n}')
         fx = os.path.join(ROOT, 'fixtures', n + '.aurora')
         err = os.path.join(os.path.dirname(exe), 'aurora-error.txt')
         if os.path.exists(err):
@@ -34,14 +36,19 @@ def main():
         r = subprocess.run([exe, '--fly-views', out, w, h, str(a.frames), str(a.speed), str(a.every), fx], cwd=os.path.dirname(exe), env=env)
         if r.returncode:
             print(n, 'failed', open(err).read() if os.path.exists(err) else '')
+            failures += 1
             continue
         rows = list(csv.DictReader(open(os.path.join(out, 'flight.csv'))))
         ms = [float(x['gpu_ms']) for x in rows]
         allms += ms
         s = sorted(ms)
         print(f"{n:24s} {statistics.median(ms):7.2f} {s[int(len(s) * .95)]:7.2f} {max(ms):7.2f} {sum(m > 16 for m in ms):6d} {sum(m > 14.5 for m in ms):6d} {float(rows[0]['zoom']):6.1f} {float(rows[-1]['zoom']):6.1f}")
+    if not allms:
+        raise SystemExit(1)
     s = sorted(allms)
     print(f"{'ALL':24s} {statistics.median(allms):7.2f} {s[int(len(s) * .95)]:7.2f} {max(allms):7.2f} {sum(m > 16 for m in allms):6d} {sum(m > 14.5 for m in allms):6d}")
+    if failures:
+        raise SystemExit(1)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,14 @@
+min-of-min ms (ratio to first)
+fixture                          before          after
+corner                     11.30(1.000)   11.31(1.001)
+interior                    6.67(1.000)    6.70(1.005)
+user-root-slow             15.73(1.000)   15.69(0.997)
+user-preview0817-slow      14.47(1.000)   14.54(1.005)
+TOTAL                      48.17(1.000)   48.25(1.002)
+median-of-median ms
+corner                     11.64(1.000)   11.54(0.992)
+interior                    6.76(1.000)    6.80(1.006)
+user-root-slow             16.65(1.000)   16.41(0.985)
+user-preview0817-slow      15.19(1.000)   15.23(1.003)
+image difference vs first variant (mean max-channel, pixels>16)
+after                    total px>16: 425991 worst: [('user-root-slow', 165386, np.float64(2.309)), ('user-preview0817-slow', 135848, np.float64(2.04)), ('interior', 78222, np.float64(2.111)), ('corner', 46535, np.float64(1.5))]

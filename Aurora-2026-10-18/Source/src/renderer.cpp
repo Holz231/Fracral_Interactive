@@ -93,6 +93,8 @@ void Renderer::initialize(HWND hwnd,int w,int h,bool paced) {
     // refresh interval. Keep a bounded queue and a diagnostic low-latency mode.
     UINT frameLatency=2;wchar_t latencySetting[16]{};
     if(GetEnvironmentVariableW(L"AURORA_FRAME_QUEUE",latencySetting,16)) frameLatency=UINT(std::clamp(_wtoi(latencySetting),1,3));
+    wchar_t emptySetting[16]{};
+    if(GetEnvironmentVariableW(L"AURORA_EMPTY_SCAN",emptySetting,16)) skipEmptyScan=_wtoi(emptySetting)!=0;
     ComPtr<IDXGIFactory1> factory;
     check(CreateDXGIFactory1(IID_PPV_ARGS(&factory)),"Create graphics factory");
     ComPtr<IDXGIAdapter1> chosen;
@@ -161,6 +163,8 @@ void Renderer::initialize(HWND hwnd,int w,int h,bool paced) {
         if(GetEnvironmentVariableW(L"AURORA_FRAME_BUDGET",value,16)) frameBudgetMs=std::clamp(_wtof(value),4.,40.);
         if(GetEnvironmentVariableW(L"AURORA_DRS_MIN",value,16)) minimumScale=std::clamp(_wtof(value),.5,1.);
         if(GetEnvironmentVariableW(L"AURORA_TAAU",value,16)) temporalUpscale=_wtoi(value)!=0;
+        if(GetEnvironmentVariableW(L"AURORA_TAA_DETAIL",value,16)) temporalDetail=_wtoi(value)!=0;
+        if(GetEnvironmentVariableW(L"AURORA_TAA_PHASES",value,16)) temporalPhases=std::clamp(_wtoi(value),0,64);
     }
     D3D11_SAMPLER_DESC sd{};sd.Filter=D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     sd.AddressU=sd.AddressV=sd.AddressW=D3D11_TEXTURE_ADDRESS_CLAMP;sd.MaxLOD=D3D11_FLOAT32_MAX;
@@ -203,6 +207,7 @@ void Renderer::resize(int w,int h) {
     resolutionScale=cap;
     makeSceneTarget(std::max(64,int(width*resolutionScale)),std::max(64,int(height*resolutionScale)));
     if(temporalUpscale && (historyWidth!=width || historyHeight!=height)) makeHistory();
+    restartResolution();
 }
 void Renderer::makeSceneTarget(int w,int h) {
     w=std::max(64,w&~1);h=std::max(64,h&~1);
@@ -216,14 +221,20 @@ void Renderer::makeSceneTarget(int w,int h) {
     check(device->CreateTexture2D(&d,nullptr,&sceneTexture),"Create fractal render texture");
     check(device->CreateRenderTargetView(sceneTexture.Get(),nullptr,&sceneTarget),"Create fractal render target");
     check(device->CreateShaderResourceView(sceneTexture.Get(),nullptr,&sceneView),"Create fractal texture view");
-    renderWidth=w;renderHeight=h;traceWidth=w;traceHeight=h;dynamicScale=1;resumePending=true;
-    restartScale=profiles[quality].capStart && resolutionScale<1?lowestScale():1;restartPending=restartScale<1;
-    settleFrames=20;
+    renderWidth=w;renderHeight=h;traceWidth=w;traceHeight=h;
     makeHistory();
     prepareWaveTargets();
+    restartResolution();
 }
 void Renderer::makeHistory() {
-    historyWidth=temporalUpscale?width:renderWidth;historyHeight=temporalUpscale?height:renderHeight;
+    int w=temporalUpscale?width:renderWidth,h=temporalUpscale?height:renderHeight;
+    historyValid=false;
+    // Quality changes usually keep the same output size. Reuse both large
+    // history textures while discarding their old lighting and sample footprint.
+    if(historyWidth==w && historyHeight==h && historyTextures[0] && historyTextures[1]) return;
+    ID3D11ShaderResourceView* none=nullptr;
+    context->PSSetShaderResources(0,1,&none);context->PSSetShaderResources(6,1,&none);
+    historyWidth=w;historyHeight=h;
     for(int i=0;i<2;i++) {
         historyViews[i].Reset();historyTargets[i].Reset();historyTextures[i].Reset();
         D3D11_TEXTURE2D_DESC d{};d.Width=historyWidth;d.Height=historyHeight;d.MipLevels=1;d.ArraySize=1;
@@ -233,13 +244,22 @@ void Renderer::makeHistory() {
         check(device->CreateRenderTargetView(historyTextures[i].Get(),nullptr,&historyTargets[i]),"Create history target");
         check(device->CreateShaderResourceView(historyTextures[i].Get(),nullptr,&historyViews[i]),"Create history view");
     }
-    historyValid=false;
+}
+void Renderer::restartResolution() {
+    // Pending timestamps refer to the old size/profile, including when two
+    // profiles happen to use identical render dimensions.
+    gpuMs=latestGpuMs=0;newestGpuSerial=frameSerial;freshSample=false;
+    dynamicScale=latestScale=1;resumePending=true;settleFrames=20;climbSerial=0;
+    restartScale=profiles[quality].capStart && resolutionScale<1?lowestScale():1;
+    restartPending=restartScale<1;historyValid=false;
 }
 void Renderer::setQuality(int q) {
-    quality=std::clamp(q,0,2);gpuMs=latestGpuMs=0;newestGpuSerial=frameSerial;
+    q=std::clamp(q,0,2);
+    quality=q;
     resolutionScale=std::min(1.,std::sqrt(profiles[quality].pixels/(double(width)*height)));
     makeSceneTarget(int(width*resolutionScale),int(height*resolutionScale));
     prepareWaveTargets();
+    restartResolution();
 }
 static Float4 asFloat(Vec3 v) {return {float(v.x),float(v.y),float(v.z),0};}
 Constants Renderer::sceneConstants(const World& world,const View& view,int palette) const {
@@ -520,7 +540,7 @@ std::array<double,4> Renderer::profileWavePasses(const World& world,const View& 
 }
 void Renderer::profileRayBatches(const World& world,const View& view,const std::wstring& path) {
     if(world.kind!=1) throw std::runtime_error("Batch profiling requires Citadel");
-    prepareWaveShaders(1);prepareWaveTargets();setConstants(world,view,0);
+    prepareWaveShaders(quality);prepareWaveTargets();setConstants(world,view,0);
     ComPtr<ID3D11Query> disjoint;D3D11_QUERY_DESC query{D3D11_QUERY_TIMESTAMP_DISJOINT,0};
     check(device->CreateQuery(&query,&disjoint),"Create batch profile clock");query.Query=D3D11_QUERY_TIMESTAMP;
     for(auto& stamp:batchQueries) check(device->CreateQuery(&query,&stamp),"Create batch timestamp");
@@ -535,7 +555,7 @@ void Renderer::profileRayBatches(const World& world,const View& view,const std::
     // Submit one frame at a time; profiling must not create a long driver queue.
     for(int frame=-2;frame<8;frame++) {
         context->Begin(disjoint.Get());measureBatches=true;
-        try {wavefrontPass(1);} catch(...) {measureBatches=false;throw;}
+        try {wavefrontPass(quality);} catch(...) {measureBatches=false;throw;}
         measureBatches=false;context->End(disjoint.Get());
         context->CopyResource(readback.Get(),batchCounts.Get());context->Flush();
         auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(30);
@@ -593,6 +613,8 @@ void Renderer::renderFrame(const World& world,const View& view,int palette) {
     bool compact=world.kind==1 && tracePath!=0;
     lastCompacted=compact;
     frameTemporal=compact && temporalEnabled;
+    if(palette!=previousPalette) historyValid=false;
+    previousPalette=palette;
     double scale=frameTemporal?dynamicScale:1;
     traceWidth=std::min(renderWidth,std::max(64,int(renderWidth*scale+.5)&~1));
     traceHeight=std::min(renderHeight,std::max(64,int(renderHeight*scale+.5)&~1));
@@ -602,16 +624,24 @@ void Renderer::renderFrame(const World& world,const View& view,int palette) {
     Vec3 right=view.right(),up=view.up(),forward=view.forward();
     float jitterX=0,jitterY=0;
     if(frameTemporal) {
-        int sample=jitterIndex++%8+1;
+        // More output pixels need more distinct subpixel positions. Eight
+        // phases suffice at native size; 2x upscaling uses 32, not the same
+        // eight positions repeated forever. Bound the sequence during DRS.
+        double ratio=std::max(1.,double(historyHeight)/traceHeight);
+        int phases=temporalDetail?std::clamp(int(std::ceil(8*ratio*ratio)),8,64):8;
+        if(temporalDetail && temporalPhases>0) phases=std::clamp(temporalPhases,8,64);
+        int sample=jitterIndex%phases+1;jitterIndex=sample%phases;
         jitterX=float(halton(sample,2)-.5);jitterY=float(halton(sample,3)-.5);
     }
     bool usable=frameTemporal && historyValid && !world.motionReset && std::isfinite(world.cameraMotion.length());
+    historyRestarted=frameTemporal && !usable;
     frame.jitter={jitterX,jitterY,previousJitterX,previousJitterY};
     auto f=[](Vec3 v,double w){return Float4{float(v.x),float(v.y),float(v.z),float(w)};};
     frame.prevRight=f(previousRight,0);frame.prevUp=f(previousUp,0);frame.prevForward=f(previousForward,0);
     frame.prevCamera=f(world.cameraMotion*-1.,world.citadel.logUnit-previousUnit);
-    frame.temporal={usable?1.f:0.f,temporalBlend,temporalSharpen,0};
-    frame.output={float(historyWidth),float(historyHeight),0,0};
+    float blend=temporalBlend*(temporalDetail && !flying?.8f:1.f);
+    frame.temporal={usable?1.f:0.f,blend,temporalSharpen,temporalDetail?1.f:0.f};
+    frame.output={float(historyWidth),float(historyHeight),skipEmptyScan?1.f:0.f,0};
     D3D11_MAPPED_SUBRESOURCE mapped{};
     check(context->Map(frameConstants.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"Update frame constants");
     memcpy(mapped.pData,&frame,sizeof(frame));context->Unmap(frameConstants.Get(),0);
@@ -653,11 +683,11 @@ void Renderer::updateDynamicScale() {
     else if(target>dynamicScale*1.02) dynamicScale=std::min(target,dynamicScale+(newestGpuSerial<climbSerial?1:.015));
 }
 void Renderer::render(const World& world,const View& view,int palette,bool timed) {
+    if(resumePending) {resumeSerial=frameSerial+1;resumePending=false;freshSample=false;}
     collectTimings();
-    if(resumePending) {resumeSerial=frameSerial+1;resumePending=false;}
-    if(timed && dynamicResolution && temporalEnabled && world.kind==1 && tracePath!=0) {
+    if(timed && flying && dynamicResolution && temporalEnabled && world.kind==1 && tracePath!=0) {
         // Samples from before the new target measured another size.
-        if(restartPending && flying) {dynamicScale=restartScale;freshSample=false;restartPending=false;settleFrames=0;climbSerial=frameSerial+21;}
+        if(restartPending) {dynamicScale=restartScale;freshSample=false;restartPending=false;settleFrames=0;climbSerial=frameSerial+21;}
         updateDynamicScale();
     }
     else dynamicScale=1;
@@ -1028,6 +1058,20 @@ std::vector<double> Renderer::sampleFrames(const World& world,const View& view,i
         if(disjoint.Disjoint || !disjoint.Frequency) {i--;continue;}
         if(i>=0) result.push_back(double(end-start)*1000/disjoint.Frequency);
     }
+    return result;
+}
+std::vector<unsigned char> Renderer::referenceFrame(const World& world,const View& view,int samples) {
+    if(samples<1 || samples>64) throw std::runtime_error("Invalid reference sample count");
+    temporalEnabled=true;dynamicScale=1;makeSceneTarget(width,height);
+    std::vector<unsigned> sum(size_t(renderWidth)*renderHeight*4);
+    jitterIndex=0;
+    for(int sample=0;sample<samples;sample++) {
+        renderFrame(world,view,0);
+        auto raw=pixels();
+        for(size_t i=0;i<raw.size();i++) sum[i]+=raw[i];
+    }
+    std::vector<unsigned char> result(sum.size());
+    for(size_t i=0;i<sum.size();i++) result[i]=static_cast<unsigned char>((sum[i]+samples/2)/samples);
     return result;
 }
 std::pair<double,double> Renderer::benchmark(const World& world,const View& view) {

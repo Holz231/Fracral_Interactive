@@ -4,6 +4,66 @@ Starte `AuroraFractal.exe` oder `Weiterfliegen.lnk`. Die Verknüpfung setzt dein
 letzten Flug fort (kopiert aus `Fraktals-Weiter/last-flight.aurora` vom 17.10., 21:58).
 Steuerung, Welten, Paletten und Qualitätsstufen sind unverändert.
 
+**Aktualisierung vom 02.11.2026:** Qualitäts- und Palettenwechsel verwerfen jetzt
+das alte zeitliche Bild; verzögerte GPU-Messwerte beeinflussen nach einem Wechsel
+oder Größenwechsel nicht mehr die neue Auflösung. Gleich große History-Texturen
+werden wiederverwendet. Standbilder rechnen mit voller Profilauflösung und sammeln
+auch nach reiner Mausbewegung oder einem neuen Bildverlauf 48 Bilder; ohne zeitliche
+Kantenglättung entfallen diese Zusatzbilder. Vier Tests einschließlich GPU-Test sowie
+die vorhandenen GPU-, Feld- und Zoomprüfungen bestehen. Alle 14 gespeicherten
+Einzelbilder bei 1980 × 1058 sind pixelgleich zur vorherigen Version.
+Details: [Änderungen und Prüfung](validation/efficiency-fixes-2026-11-02.md).
+
+**Schärfer während des Flugs (03.11.2026):** Die zeitliche Kantenglättung prüft
+jetzt die vorige Oberflächentiefe, erhält feine Kanten besser und nutzt beim
+Hochskalieren mehr unterschiedliche Abtastpositionen. In den geprüften Flügen
+steigt der gemessene Kantenkontrast bei 1080p um 7–9 %, in 4K um etwa 4–5 %.
+Die GPU-Kosten bleiben in den wiederholten Messungen praktisch gleich. Nach dem
+Anhalten sammelt der Filter etwas stärker, damit das Standbild ruhig bleibt.
+[Vergleichsbilder, Messverfahren und Grenzen](validation/temporal-clarity-2026-11-03.md).
+
+**Weniger unnötige GPU-Arbeit (03.11.2026):** Leere Strahlen-Warteschlangen
+werden jetzt schneller vorbereitet. Gegen die vorige EXE spart das in leichten
+4K-Testansichten rund 3–5 % GPU-Zeit, über alle 14 Ansichten etwa 1 %.
+Die 4K-Bildvergleiche und exakten Treffertiefen bleiben identisch.
+[Messungen und Prüfungen](validation/empty-queues-2026-11-03.md).
+
+**Weitere Prüfung (03.11.2026):** Zwei zusätzliche Varianten der parallelen
+Sortiervorbereitung zeigten keinen verlässlichen Gesamtvorteil und wurden
+verworfen. Die GPU-Tests prüfen jetzt 153 Warteschlangenfälle, einschließlich
+aller 128 Sortierfächer und wichtiger Dispatch-Grenzen. Vier Tests bestehen;
+die installierte Version bleibt unverändert.
+[Versuche und Ergebnisse](validation/parallel-scan-trials-2026-11-03.md).
+
+## Geisterrennen (11.11.2026)
+
+Ein Zeitrennen gegen deine eigene Bestzeit, in der Welt Mandelbox Citadel:
+
+- **N** setzt den Start an der jetzigen Stelle, die Uhr läuft sofort. Flieg zur
+  gewünschten Zielstelle und drück **N** noch einmal: Die Strecke ist gespeichert,
+  dieser erste Flug ist die Bestzeit und der erste Geist.
+- **Enter** startet das Rennen: zurück zum Start, drei Sekunden Countdown (umsehen
+  geht, fliegen nicht), dann los. Der Geist fliegt deinen besten Lauf nach. Das Ziel
+  ist eine Kugel, so groß wie der freie Raum an der Zielstelle. Enter während des
+  Rennens startet neu.
+- Bist du schneller, wird dein Lauf der neue Geist. **Rücktaste** verlässt das Rennen.
+
+Der Weg ist frei: Es zählt nur die Zeit vom Start bis ins Ziel, Abkürzungen sind
+erlaubt. Im Rennen ist das Tempo fest (Shift und Mausrad wirken nicht), damit die
+Läufe vergleichbar sind. Wie im freien Flug bist du nah an Wänden langsam und in
+offenen Gängen schnell; die schnelle Linie hält Abstand und zielt in lange Gänge.
+Geist und Ziel sind auch hinter Wänden zu sehen (dann blasser) und zeigen am
+Bildrand die Richtung, wenn sie außerhalb des Bildes liegen.
+
+Strecke und Geist liegen in `race-start.aurora` und `race-ghost.bin` neben der EXE
+und sind nach dem Neustart wieder da. Es gibt eine Strecke; eine neue mit N
+überschreibt sie beim zweiten N. Die Positionen des Geists sind wie die Kamera über
+ihre Referenzbahn gespeichert und bleiben auch bei sehr tiefem Zoom genau (Test bei
+10^20). Geprüft mit `ctest` (neuer Test `race_ghost`) und
+`AuroraFractal.exe --race-check <Ordner>`, das eine Strecke aufnimmt, zweimal
+dagegen fliegt und Bilder der Anzeige schreibt. Das Rendern selbst ist unverändert:
+alle 14 gespeicherten Ansichten bei 1980 × 1058 sind pixelgleich zur vorherigen EXE.
+
 ## Was behoben ist
 
 **Pixelrauschen und Flimmern.** Wände, die man sehr flach sieht, und feine Löcher
@@ -304,3 +364,9 @@ lässt die Kantenglättung wieder nur in der gerechneten Größe sammeln (zum Ve
 Messmodi: `--bench-views`, `--fly-views`, `--diag-views` (siehe `validation/tools`).
 `AURORA_BENCH_QUALITY=2` wählt in `--bench-views`, `--fly-views` und
 `--flight-profile` die Stufe Ultra.
+`AURORA_TAA_DETAIL=0` stellt den bisherigen zeitlichen Filter zum Vergleichen
+wieder her. `AURORA_TAA_PHASES` überschreibt nur für Diagnosen die automatisch
+gewählte Zahl der Abtastpositionen (8–64).
+`AURORA_EMPTY_SCAN=0` stellt für Diagnosemessungen die vorige Vorbereitung leerer
+Strahlen-Warteschlangen wieder her. `--batch-views` verwendet dieselben Argumente
+wie `--bench-views` und exportiert zusätzlich die Strahlenzahl je Durchlauf.

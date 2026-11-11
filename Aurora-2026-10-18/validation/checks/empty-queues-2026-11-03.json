@@ -1,0 +1,359 @@
+{
+  "date": "2026-11-03",
+  "adapter": "NVIDIA GeForce RTX 4070 SUPER",
+  "executable_sha256": "AEE3D858EC3A5EDD3F1DFFD0F05F082F56C29AFB4F4D862ADBE8F2F8E8A9543A",
+  "previous_executable_sha256": "37FD59867178FFB197612BE4368F99B8146E4DFCB52AB6BC17734FC7CDDD3A36",
+  "ctest_passed": 4,
+  "installed_pngs_identical": 14,
+  "motion_png_pairs_identical": 10,
+  "camera_routes_identical": 2,
+  "equivalence_checks": {
+    "executable_sha256": "aee3d858ec3a5edd3f1dffd0f05f082f56c29afb4f4d862adbe8f2f8e8a9543a",
+    "colours": {
+      "balanced-4k": 16,
+      "ultra-4k": 7,
+      "performance-4k": 7
+    },
+    "depths": {
+      "heavy69": 2094840,
+      "slow41": 2094840,
+      "slow45": 2094840,
+      "user-root-slow": 2094840
+    }
+  },
+  "timing": {
+    "size": "3840x2160",
+    "frames": 32,
+    "rounds": 3,
+    "minimum_ms": {
+      "installed": {
+        "corner": [
+          11.3233,
+          11.4156,
+          11.3961
+        ],
+        "heavy69": [
+          10.2119,
+          10.2308,
+          10.2328
+        ],
+        "interior": [
+          6.74099,
+          6.73075,
+          6.72147
+        ],
+        "slow384": [
+          7.0737,
+          7.11741,
+          7.12461
+        ],
+        "slow41": [
+          9.22931,
+          9.2201,
+          9.22522
+        ],
+        "slow45": [
+          7.31718,
+          7.25459,
+          7.2704
+        ],
+        "slowstart56": [
+          3.02982,
+          3.03821,
+          3.04026
+        ],
+        "stutter": [
+          4.3567,
+          4.36326,
+          4.38742
+        ],
+        "user-preview-last": [
+          3.74784,
+          3.74272,
+          3.74886
+        ],
+        "user-preview-slow": [
+          3.95549,
+          3.97306,
+          3.9721
+        ],
+        "user-preview0817-last": [
+          9.27334,
+          9.29894,
+          9.30384
+        ],
+        "user-preview0817-slow": [
+          14.5736,
+          14.6244,
+          14.6217
+        ],
+        "user-root-last": [
+          3.64733,
+          3.66285,
+          3.66576
+        ],
+        "user-root-slow": [
+          15.9146,
+          15.8392,
+          16.3214
+        ]
+      },
+      "updated": {
+        "corner": [
+          11.2353,
+          11.2823,
+          11.2892
+        ],
+        "heavy69": [
+          10.2315,
+          10.2154,
+          10.2164
+        ],
+        "interior": [
+          6.60678,
+          6.61795,
+          6.60378
+        ],
+        "slow384": [
+          7.07786,
+          7.07235,
+          7.05331
+        ],
+        "slow41": [
+          9.19245,
+          9.20051,
+          9.1863
+        ],
+        "slow45": [
+          7.2489,
+          7.26016,
+          7.30621
+        ],
+        "slowstart56": [
+          2.88662,
+          2.89485,
+          2.89894
+        ],
+        "stutter": [
+          4.2393,
+          4.22502,
+          4.22707
+        ],
+        "user-preview-last": [
+          3.60346,
+          3.59725,
+          5.78538
+        ],
+        "user-preview-slow": [
+          3.82765,
+          3.84285,
+          5.89107
+        ],
+        "user-preview0817-last": [
+          9.14842,
+          9.17053,
+          9.13203
+        ],
+        "user-preview0817-slow": [
+          14.5169,
+          14.5695,
+          14.5213
+        ],
+        "user-root-last": [
+          3.51728,
+          3.51539,
+          3.51437
+        ],
+        "user-root-slow": [
+          15.8013,
+          15.8042,
+          16.2765
+        ]
+      }
+    },
+    "median_ms": {
+      "installed": {
+        "corner": [
+          11.6394,
+          11.6787,
+          11.6568
+        ],
+        "heavy69": [
+          10.4325,
+          10.4508,
+          10.4722
+        ],
+        "interior": [
+          6.83008,
+          6.84032,
+          6.83786
+        ],
+        "slow384": [
+          7.34883,
+          7.29082,
+          7.3513
+        ],
+        "slow41": [
+          9.45238,
+          9.44109,
+          9.44621
+        ],
+        "slow45": [
+          7.47802,
+          7.49875,
+          7.5008
+        ],
+        "slowstart56": [
+          3.06278,
+          3.07066,
+          3.05869
+        ],
+        "stutter": [
+          4.41651,
+          4.43904,
+          4.4345
+        ],
+        "user-preview-last": [
+          3.78675,
+          3.79597,
+          3.78573
+        ],
+        "user-preview-slow": [
+          3.9977,
+          3.99872,
+          3.99872
+        ],
+        "user-preview0817-last": [
+          9.51603,
+          9.49965,
+          9.49043
+        ],
+        "user-preview0817-slow": [
+          14.859,
+          14.9226,
+          14.9279
+        ],
+        "user-root-last": [
+          3.67683,
+          3.69357,
+          3.68947
+        ],
+        "user-root-slow": [
+          16.227,
+          16.256,
+          16.4649
+        ]
+      },
+      "updated": {
+        "corner": [
+          11.6398,
+          11.5517,
+          11.6701
+        ],
+        "heavy69": [
+          10.4284,
+          10.4356,
+          10.454
+        ],
+        "interior": [
+          6.79322,
+          6.70003,
+          6.7799
+        ],
+        "slow384": [
+          7.18112,
+          7.21699,
+          7.23251
+        ],
+        "slow41": [
+          9.35936,
+          9.41363,
+          9.41875
+        ],
+        "slow45": [
+          7.49043,
+          7.53357,
+          7.4895
+        ],
+        "slowstart56": [
+          2.91533,
+          2.916,
+          2.92045
+        ],
+        "stutter": [
+          4.29043,
+          4.2967,
+          4.26701
+        ],
+        "user-preview-last": [
+          3.64314,
+          3.65344,
+          5.91155
+        ],
+        "user-preview-slow": [
+          3.8697,
+          3.86662,
+          6.15117
+        ],
+        "user-preview0817-last": [
+          9.39197,
+          9.3911,
+          9.37053
+        ],
+        "user-preview0817-slow": [
+          14.849,
+          14.8541,
+          14.8111
+        ],
+        "user-root-last": [
+          3.53587,
+          3.54611,
+          3.53485
+        ],
+        "user-root-slow": [
+          16.0522,
+          16.1421,
+          16.4861
+        ]
+      }
+    }
+  },
+  "field": {
+    "poses": 48,
+    "gpu_cpu_samples": 24576,
+    "max_relative_error": 0.0512561,
+    "max_pixel_error": 0.131132,
+    "max_tolerance_ratio": 0.544497,
+    "relative_allowance": 2E-05,
+    "pixel_allowance": 0.05
+  },
+  "zoom": {
+    "checkpoints": [
+      {
+        "zoom_log10": 0.00171405,
+        "gpu_field_relative_error": 6.22968E-07,
+        "unit_change_mean_pixel_error": 4.38771E-05,
+        "motion_max_mean_pixel_change": 0.00163076
+      },
+      {
+        "zoom_log10": 6.00366,
+        "gpu_field_relative_error": 0.00932019,
+        "unit_change_mean_pixel_error": 0.000276021,
+        "motion_max_mean_pixel_change": 0.00373892
+      },
+      {
+        "zoom_log10": 24.0027,
+        "gpu_field_relative_error": 0.00912276,
+        "unit_change_mean_pixel_error": 0.000259797,
+        "motion_max_mean_pixel_change": 0.00315559
+      },
+      {
+        "zoom_log10": 80.0017,
+        "gpu_field_relative_error": 0.00733422,
+        "unit_change_mean_pixel_error": 0.000204021,
+        "motion_max_mean_pixel_change": 0.00793454
+      }
+    ],
+    "passed": true
+  }
+}

@@ -1,5 +1,7 @@
 #include "renderer.h"
 #include "flight_time.h"
+#include "frame_settling.h"
+#include "race.h"
 #include <windowsx.h>
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -9,6 +11,7 @@
 #include <iomanip>
 #include <sstream>
 #include <random>
+#include <memory>
 
 extern "C" {
 __declspec(dllexport) DWORD NvOptimusEnablement=1;
@@ -28,6 +31,7 @@ struct App {
     View view{1};
     bool initialized=false,active=true,dirty=true,automatic=true,paused=false,hud=true,fullscreen=false,persist=true;
     bool dragging=false,rightHeld=false,freeLook=false,cursorHidden=false;
+    bool cameraChanged=false;
     int width=1440,height=900,palette=0,quality=1,hover=-1,lastX=0,lastY=0;
     float uiScale=1;
     double speed=1.9,fps=0;
@@ -37,6 +41,36 @@ struct App {
     DWORD windowStyle=WS_OVERLAPPEDWINDOW;
     std::filesystem::path directory;
     std::wstring statusNote;
+    // Ghost race: N marks start and finish of a track, Enter races the best run.
+    Race race;
+    std::wstring raceNote;
+    void saveRace() {
+        if(!persist || !race.hasTrack) return;
+        saveFlight(race.startWorld,race.startView,directory/L"race-start.aurora");
+        race.saveGhost(directory/L"race-ghost.bin");
+    }
+    void loadRace() {
+        try {
+            if(!std::filesystem::exists(directory/L"race-start.aurora") || !std::filesystem::exists(directory/L"race-ghost.bin")) return;
+            World start(1);View direction(1);loadFlight(start,direction,directory/L"race-start.aurora");
+            Race loaded;loaded.loadGhost(directory/L"race-ghost.bin");
+            loaded.startWorld=std::move(start);loaded.startView=direction;race=std::move(loaded);
+        } catch(const std::exception&) {race=Race();}
+    }
+    static void loadSaved(App& app) {app.race=Race();app.loadRace();}
+    void raceTrackKey() {
+        if(world.kind!=1) {raceNote=L"Races need the Citadel world (T)";dirty=true;return;}
+        if(race.state==Race::State::Recording) {
+            if(race.finishTrack(world)) {raceNote.clear();saveRace();}
+            else raceNote=L"Fly a little further before setting the finish";
+        } else {manual();paused=false;raceNote.clear();race.beginTrack(world,view);}
+        dirty=true;
+    }
+    void raceStartKey() {
+        if(world.kind!=1) {raceNote=L"Races need the Citadel world (T)";dirty=true;return;}
+        if(!race.hasTrack) {raceNote=L"No track yet: N marks the start, N again the finish";dirty=true;return;}
+        manual();paused=false;raceNote.clear();race.start(world,view);dirty=true;
+    }
     struct FlightFrame {Citadel citadel;View view{1};uint64_t serial=0;int width=0,height=0,quality=1;bool compacted=false;};
     std::array<FlightFrame,gpuTimingSlots> flightFrames;
     FlightFrame slowestFrame;
@@ -77,7 +111,7 @@ struct App {
     }
     void releaseLook() {rightHeld=freeLook=dragging=false;ReleaseCapture();cursor();}
     void manual() {automatic=false;world.hasDestination=false;dirty=true;}
-    void rotate(int dx,int dy) {manual();view.yaw+=dx*.003;view.pitch=std::clamp(view.pitch-dy*.003,-1.52,1.52);}
+    void rotate(int dx,int dy) {manual();view.yaw+=dx*.003;view.pitch=std::clamp(view.pitch-dy*.003,-1.52,1.52);cameraChanged|=dx!=0 || dy!=0;}
     void setFullscreen() {
         releaseLook();
         if(!fullscreen) {
@@ -110,6 +144,7 @@ struct App {
         }
     }
     void action(int id) {
+        if(id==0 || id==5 || id==8) race.stop();
         switch(id) {
             case 0: automatic=!automatic;world.hasDestination=false;paused=false;break;
             case 1: paused=!paused;break;
@@ -130,6 +165,7 @@ struct App {
     }
     bool moving() const {
         if(paused) return false;
+        if(race.ticking()) return true;
         return automatic||keys['W']||keys['A']||keys['S']||keys['D']||keys['Q']||keys['E']||keys[VK_LEFT]||keys[VK_RIGHT]||keys[VK_UP]||keys[VK_DOWN];
     }
     void update(double dt) {
@@ -143,21 +179,98 @@ struct App {
             double f=int(keys['W'])-int(keys['S']),r=int(keys['D'])-int(keys['A']),y=int(keys['E'])-int(keys['Q']);
             Vec3 dir=view.forward()*f+view.right()*r+view.frame({0,y,0});
             double rate=speed*(keys[VK_SHIFT]?3:1)/(world.kind==1?1:std::max(1.,std::sqrt(f*f+r*r+y*y)));
-            world.fly(world.toDomain(dir),dt,rate/(world.kind==1?1:1.25));
+            // Every race run uses the same speed; the countdown only allows looking.
+            if(race.fixedSpeed()) rate=Race::flightSpeed;
+            if(!race.frozen()) world.fly(world.toDomain(dir),dt,rate/(world.kind==1?1:1.25));
         }
         for(const auto& warp:world.warps) view.apply(warp);
         world.warps.clear();
         world.prepare();dirty=true;
+        if(race.ticking()) {
+            if(world.kind!=1 || automatic) race.stop();
+            else if(race.update(world,dt)) saveRace();
+        }
+    }
+    static std::wstring raceClock(double seconds) {
+        int hundredths=int(std::floor(std::max(0.,seconds)*100+.5));
+        std::wostringstream text;text<<hundredths/6000<<L':'<<std::setw(2)<<std::setfill(L'0')<<hundredths/100%60<<L'.'<<std::setw(2)<<hundredths%100;
+        return text.str();
+    }
+    // A point given relative to the camera: a disc of its real size, or a small
+    // pointer at the screen edge when it is outside the view. Dimmed behind walls.
+    void raceMarker(Vec3 offset,double radius,D2D1_COLOR_F color,const std::wstring& label,float labelShift) {
+        const float w=width/uiScale,h=height/uiScale;
+        double depth=offset.dot(view.forward()),sx=offset.dot(view.right()),sy=offset.dot(view.up()),size=offset.length();
+        if(size<1e-12) return;
+        double focal=1.85*h*.5;float x=0,y=0,r=6;bool inside=false;
+        if(depth>size*1e-3) {
+            x=float(w*.5+sx/depth*focal);y=float(h*.5-sy/depth*focal);r=float(std::clamp(radius/depth*focal,5.,h*.3));
+            inside=x>30 && x<w-30 && y>30 && y<h-30;
+        }
+        if(!inside) {
+            double length=std::max(std::hypot(sx,sy),1e-12),dx=sx/length,dy=-sy/length;
+            double reach=std::min((w*.5-34)/std::max(std::abs(dx),1e-6),(h*.5-34)/std::max(std::abs(dy),1e-6));
+            x=float(w*.5+dx*reach);y=float(h*.5+dy*reach);r=7;
+        }
+        Vec3 ray=offset/size;double travelled=0;bool hidden=false;
+        for(int i=0;i<40 && travelled<size-radius;i++) {
+            double d=world.citadel.distance(ray*travelled);
+            if(d<std::max(1e-4,travelled*2e-3)) {hidden=true;break;}
+            travelled+=d*.9;
+        }
+        float alpha=hidden?.45f:1.f;
+        if(inside) renderer.rect(x-r,y-r,2*r,2*r,D2D1::ColorF(color.r,color.g,color.b,.22f*alpha),r);
+        renderer.rect(x-4,y-4,8,8,D2D1::ColorF(color.r,color.g,color.b,.95f*alpha),4);
+        renderer.text(label,std::clamp(x+10,8.f,w-120),std::clamp(y+labelShift,8.f,h-30),120,22,0,D2D1::ColorF(color.r,color.g,color.b,alpha));
+    }
+    void raceOverlay(bool showHint) {
+        using State=Race::State;
+        auto panel=D2D1::ColorF(.025f,.045f,.065f,.87f),ink=D2D1::ColorF(.87f,.94f,.96f),muted=D2D1::ColorF(.52f,.67f,.72f),teal=D2D1::ColorF(.40f,.88f,.84f),gold=D2D1::ColorF(1.f,.80f,.36f);
+        const float w=width/uiScale,x=w*.5f-175,top=showHint && w<1080?130.f:20.f;
+        if(race.state==State::Idle) {
+            if(!showHint || world.kind!=1) return;
+            std::wstring hint=!raceNote.empty()?raceNote:race.hasTrack?L"Enter  Race your ghost  ("+raceClock(race.bestTime)+L")      N  New track":L"N  Start a race track here";
+            renderer.rect(x,top,350,36,panel,10);renderer.text(hint,x+16,top+7,326,24,0,raceNote.empty()?muted:gold);
+            return;
+        }
+        if(world.kind==1 && race.state!=State::Recording && race.state!=State::Finished) {
+            double scale=std::exp2(std::clamp(race.finish.logUnit-world.citadel.logUnit,-1000.,1000.));
+            raceMarker(raceOffset(world.citadel,race.finish),Race::gateRadius*scale,gold,L"FINISH",-24);
+            Vec3 ghost;double unit=0;
+            if(race.ghost(world.citadel,race.state==State::Running?race.time:0,ghost,unit))
+                raceMarker(ghost,.1*std::exp2(std::clamp(unit-world.citadel.logUnit,-1000.,1000.)),teal,L"GHOST",2);
+        }
+        renderer.rect(x,top,350,100,panel,12);
+        std::wstring title,big,detail;D2D1_COLOR_F accent=teal;
+        switch(race.state) {
+        case State::Recording:
+            title=L"NEW TRACK";big=raceClock(race.time);detail=raceNote.empty()?L"Fly to where the finish should be, then press N":raceNote;break;
+        case State::Countdown:
+            title=L"GET READY";big=std::to_wstring(std::max(1,int(std::ceil(race.countdown))));detail=L"Best  "+raceClock(race.bestTime);break;
+        case State::Running:
+            title=L"RACE";big=raceClock(race.time);detail=L"Best  "+raceClock(race.bestTime)+L"      Enter  Restart";break;
+        default:
+            big=raceClock(race.finishedTime);
+            if(race.firstRun) {title=L"TRACK SAVED";detail=L"Enter  Race your ghost      N  New track";}
+            else if(race.newBest) {title=L"NEW BEST";accent=gold;detail=L"-"+raceClock(race.previousBest-race.finishedTime)+L"      Enter  Again";}
+            else {title=L"FINISHED";detail=L"+"+raceClock(race.finishedTime-race.bestTime)+L" behind your ghost      Enter  Again";}
+        }
+        renderer.text(title,x+18,top+8,200,22,0,accent);
+        renderer.text(L"Backspace  Leave",x+222,top+8,120,22,0,muted);
+        renderer.text(big,x+18,top+26,320,38,2,ink);
+        renderer.text(detail,x+18,top+70,326,24,0,muted);
     }
     void overlay() {
-        buttons.clear();if(!hud) return;
+        buttons.clear();if(!hud && !race.active()) return;
         auto panel=D2D1::ColorF(.025f,.045f,.065f,.87f),ink=D2D1::ColorF(.87f,.94f,.96f),muted=D2D1::ColorF(.52f,.67f,.72f),teal=D2D1::ColorF(.40f,.88f,.84f);
         const float w=width/uiScale,h=height/uiScale;
         renderer.beginOverlay(uiScale);
+        raceOverlay(hud);
+        if(!hud) {renderer.endOverlay();return;}
         renderer.rect(22,20,330,100,panel,12);
         renderer.text(L"A U R O R A",38,30,285,38,2,ink);
         renderer.text(world.kind==1?L"MANDELBOX CITADEL":L"IRIDESCENT VAULTS",40,69,290,24,0,muted);
-        renderer.text(paused?L"PAUSED":automatic?L"GUIDED DIVE":L"FREE FLIGHT",40,92,270,24,0,teal);
+        renderer.text(paused?L"PAUSED":race.ticking()?L"GHOST RACE":automatic?L"GUIDED DIVE":L"FREE FLIGHT",40,92,270,24,0,teal);
         renderer.rect(214,88,122,25,hover==8?D2D1::ColorF(.19f,.26f,.3f):D2D1::ColorF(.1f,.15f,.19f),5);
         renderer.text(L"T  Change world",224,91,108,22,0,ink);buttons.push_back({214,88,122,25,8});
         renderer.rect(w-250,20,228,100,panel,12);
@@ -197,7 +310,7 @@ struct App {
             renderer.text(v.str(),x+8,toolbarY+21,62,24,0,ink);x+=65;
             button(7,30,L"+");
         }
-        renderer.text(L"WASD move    Q/E down / up    Drag / hold right mouse to look    Shift boost    Wheel speed    Space pause    H hide",38,toolbarY+60,w-76,24,0,muted);
+        renderer.text(L"WASD move    Q/E down / up    Drag / hold right mouse to look    Shift boost    Wheel speed    Space pause    H hide    N / Enter race",38,toolbarY+60,w-76,24,0,muted);
         if(!automatic) {
             renderer.rect(w*.5f-5,h*.5f-.5f,10,1,D2D1::ColorF(.8f,.95f,1.f,.48f));
             renderer.rect(w*.5f-.5f,h*.5f-5,1,10,D2D1::ColorF(.8f,.95f,1.f,.48f));
@@ -266,6 +379,9 @@ static LRESULT CALLBACK windowProc(HWND hwnd,UINT message,WPARAM w,LPARAM l) {
             case 'H':app->hud=!app->hud;app->dirty=true;break;
             case 'T':app->action(8);break;
             case VK_F9:app->checkpoint();break;
+            case 'N':app->raceTrackKey();break;
+            case VK_RETURN:app->raceStartKey();break;
+            case VK_BACK:app->race.stop();app->raceNote.clear();app->dirty=true;break;
             case VK_ESCAPE:if(app->locked()) app->releaseLook();else if(app->fullscreen) app->setFullscreen();else app->action(1);break;
             case 'W':case 'A':case 'S':case 'D':case 'Q':case 'E':case VK_UP:case VK_DOWN:case VK_LEFT:case VK_RIGHT:app->manual();break;
             default:return DefWindowProc(hwnd,message,w,l);
@@ -645,9 +761,9 @@ static std::vector<std::wstring> commandArguments() {
 }
 // --bench-views <output> <width> <height> <frames> <fixture.aurora>...
 // Loads each saved camera, samples complete GPU frames and writes a PNG.
-static int benchViews(App& app) {
+static int benchViews(App& app,bool batches=false) {
     auto args=commandArguments();size_t at=0;
-    while(at<args.size() && args[at]!=L"--bench-views") at++;
+    while(at<args.size() && args[at]!=(batches?L"--batch-views":L"--bench-views")) at++;
     if(at+5>args.size()) throw std::runtime_error("--bench-views <output> <width> <height> <frames> <fixtures...>");
     std::filesystem::path out=args[at+1];int w=std::stoi(args[at+2]),h=std::stoi(args[at+3]),frames=std::stoi(args[at+4]);
     std::filesystem::create_directories(out);
@@ -659,6 +775,7 @@ static int benchViews(App& app) {
         std::filesystem::path fixture=args[i];
         loadFlight(app.world,app.view,fixture);
         auto samples=app.renderer.sampleFrames(app.world,app.view,frames,std::max(8,frames/2));
+        if(batches) app.renderer.profileRayBatches(app.world,app.view,(out/(fixture.stem().wstring()+L"-batches.csv")).wstring());
         std::vector<double> sorted=samples;std::sort(sorted.begin(),sorted.end());
         double mean=0;for(double v:samples) mean+=v/samples.size();
         app.renderer.render(app.world,app.view,0,false);auto image=app.renderer.pixels();
@@ -667,6 +784,48 @@ static int benchViews(App& app) {
         report<<utf8(fixture.stem().wstring())<<','<<w<<','<<h<<','<<app.renderer.sceneWidth()<<','<<app.renderer.sceneHeight()<<','<<quality<<','
             <<sorted[sorted.size()/2]<<','<<mean<<','<<sorted.front()<<','<<sorted.back()<<','<<unfinished<<'\n';report.flush();
     }
+    return 0;
+}
+
+// --race-check <output>: records a track, races the ghost twice with the real
+// controller and overlay, and captures the ghost and finish markers.
+static int raceCheck(App& app) {
+    auto args=commandArguments();size_t at=0;
+    while(at<args.size() && args[at]!=L"--race-check") at++;
+    if(at+2>args.size()) throw std::runtime_error("--race-check <output>");
+    std::filesystem::path out=args[at+1];std::filesystem::create_directories(out);
+    app.uiScale=1;app.width=1600;app.height=900;app.renderer.resize(1600,900);app.renderer.setQuality(1);
+    app.directory=out;app.persist=true;app.world=World(1);app.view=View(1);app.automatic=false;app.paused=false;app.keys.fill(false);
+    auto fail=[](const char* text){throw std::runtime_error(text);};
+    auto frames=[&](int count){for(int i=0;i<count;i++) app.update(1./60);};
+    auto picture=[&](const wchar_t* name){app.world.prepare();app.renderer.render(app.world,app.view,0,false);app.overlay();app.renderer.capture((out/name).wstring());};
+    picture(L"0-idle.png");
+    app.raceTrackKey();app.keys['W']=true;frames(300);app.keys['W']=false;picture(L"1-recording.png");
+    app.raceTrackKey();
+    if(app.race.state!=Race::State::Finished || !app.race.hasTrack) fail("Track was not recorded");
+    double first=app.race.bestTime;picture(L"2-track-saved.png");
+    // Slow run: wait a second after the start, the ghost flies ahead.
+    app.raceStartKey();frames(90);picture(L"3-countdown.png");frames(92);
+    if(app.race.state!=Race::State::Running) fail("Countdown did not end");
+    frames(75);picture(L"4-ghost-ahead.png");
+    Vec3 ghost;double unit=0;
+    if(!app.race.ghost(app.world.citadel,app.race.time,ghost,unit) || ghost.dot(app.view.forward())<=0) fail("Ghost is not ahead of a waiting player");
+    app.keys['W']=true;
+    for(int i=0;i<1200 && app.race.state==Race::State::Running;i++) {app.update(1./60);if(i==120) picture(L"5-chasing.png");}
+    app.keys['W']=false;
+    if(app.race.state!=Race::State::Finished || app.race.newBest) fail("Slow run did not finish behind the ghost");
+    double slow=app.race.finishedTime;picture(L"6-finished-behind.png");
+    // Loading the saved files must give the same track.
+    App::loadSaved(app);
+    if(!app.race.hasTrack || app.race.bestTime!=first) fail("Saved track did not load");
+    app.race.bestTime=first+30;
+    app.raceStartKey();frames(182);app.keys['W']=true;
+    for(int i=0;i<1200 && app.race.state==Race::State::Running;i++) app.update(1./60);
+    app.keys['W']=false;
+    if(app.race.state!=Race::State::Finished || !app.race.newBest) fail("Faster run did not become the best");
+    picture(L"7-new-best.png");
+    std::ofstream report(out/L"race-check.json");
+    report<<"{\"track_seconds\":"<<first<<",\"slow_run_seconds\":"<<slow<<",\"repeat_seconds\":"<<app.race.finishedTime<<",\"ghost_samples\":"<<app.race.best.size()<<",\"passed\":true}\n";
     return 0;
 }
 
@@ -682,6 +841,8 @@ static int diagViews(App& app) {
     report<<"fixture,width,height,cone_calls,cone_iterations,refine_calls,refine_iterations,trace_calls,trace_iterations,trace_reference_iterations,hits,escaped,unfinished,max_pixel_calls,calls_le10,calls_le20,calls_le40,calls_le70,calls_gt70\n";
     for(size_t i=at+4;i<args.size();i++) {
         std::filesystem::path fixture=args[i];loadFlight(app.world,app.view,fixture);
+        app.renderer.render(app.world,app.view,0,false);
+        auto stem=fixture.stem().wstring();app.renderer.capture((out/(stem+L".png")).wstring());
         std::vector<float> rays;auto stats=app.renderer.traceStatistics(app.world,app.view,&rays);
         uint64_t coneCalls=0,coneIterations=0,traceCalls=0,traceIterations=0;uint32_t maxCalls=0;
         for(int level=0;level<4;level++) {coneCalls+=stats[level*2];coneIterations+=stats[level*2+1];}
@@ -689,10 +850,8 @@ static int diagViews(App& app) {
         for(size_t p=0;p<pixels;p++) {traceCalls+=stats[16+p*2];traceIterations+=stats[17+p*2];maxCalls=std::max(maxCalls,stats[16+p*2]);}
         size_t hits=0,escaped=0,unfinished=0;
         for(size_t p=0;p<rays.size();p+=2) {hits+=rays[p+1]>0;escaped+=rays[p+1]==0;unfinished+=rays[p+1]<0;}
-        auto stem=fixture.stem().wstring();
         {std::ofstream bin(out/(stem+L"-stats.bin"),std::ios::binary);bin.write(reinterpret_cast<const char*>(stats.data()),stats.size()*4);}
         {std::ofstream bin(out/(stem+L"-rays.bin"),std::ios::binary);bin.write(reinterpret_cast<const char*>(rays.data()),rays.size()*4);}
-        app.renderer.render(app.world,app.view,0,false);app.renderer.capture((out/(stem+L".png")).wstring());
         report<<utf8(stem)<<','<<app.renderer.sceneWidth()<<','<<app.renderer.sceneHeight()<<','<<coneCalls<<','<<coneIterations<<','<<stats[8]<<','<<stats[9]<<','
             <<traceCalls<<','<<traceIterations<<','<<stats[10]<<','<<hits<<','<<escaped<<','<<unfinished<<','<<maxCalls<<','<<stats[11]<<','<<stats[12]<<','<<stats[13]<<','<<stats[14]<<','<<stats[15]<<'\n';report.flush();
     }
@@ -702,21 +861,31 @@ static int diagViews(App& app) {
 // --fly-views <output> <width> <height> <frames> <speed> <capture-every> <fixture.aurora>
 // Flies forward from a saved camera with fixed 1/60 s steps, timing every GPU
 // frame and measuring the presented change between consecutive frames.
-static int flyViews(App& app) {
+static int flyViews(App& app,bool audit=false) {
     auto args=commandArguments();size_t at=0;
-    while(at<args.size() && args[at]!=L"--fly-views") at++;
-    if(at+7>args.size()) throw std::runtime_error("--fly-views <output> <width> <height> <frames> <speed> <capture-every> <fixture>");
+    while(at<args.size() && args[at]!=(audit?L"--temporal-audit":L"--fly-views")) at++;
+    if(at+8>args.size()) throw std::runtime_error("--fly-views/--temporal-audit <output> <width> <height> <frames> <speed> <capture-every> <fixture>");
     std::filesystem::path out=args[at+1];int w=std::stoi(args[at+2]),h=std::stoi(args[at+3]),frames=std::stoi(args[at+4]);
     double speed=std::stod(args[at+5]);int every=std::stoi(args[at+6]);std::filesystem::path fixture=args[at+7];
     std::filesystem::create_directories(out);
     app.width=w;app.height=h;app.renderer.resize(w,h);app.renderer.setQuality(benchQuality());
+    if(audit) app.renderer.temporalEnabled=true;
     loadFlight(app.world,app.view,fixture);
-    app.renderer.sampleFrames(app.world,app.view,8,0);
+    struct ReferenceWindow {HWND handle=nullptr;~ReferenceWindow() {if(handle) DestroyWindow(handle);}} referenceWindow;
+    std::unique_ptr<Renderer> reference;
+    if(audit) {
+        referenceWindow.handle=CreateWindowExW(0,L"STATIC",L"Aurora temporal reference",WS_OVERLAPPEDWINDOW,0,0,w,h,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
+        if(!referenceWindow.handle) throw std::runtime_error("Could not create temporal reference window");
+        reference=std::make_unique<Renderer>();reference->initialize(referenceWindow.handle,w,h,false);reference->setQuality(benchQuality());
+        std::ofstream metadata(out/L"reference.json");metadata<<"{\"width\":"<<w<<",\"height\":"<<h<<",\"samples\":8}\n";
+    }
     wchar_t drsText[4]{};bool drs=GetEnvironmentVariableW(L"AURORA_FLY_DRS",drsText,4) && drsText[0]==L'1';
     std::ofstream csv(out/L"flight.csv");csv<<"frame,zoom,gpu_ms,mean_change,pixels_over_32,scale\n";
     std::vector<unsigned char> previous;
     wchar_t turnText[32]{};double turn=0;
     if(GetEnvironmentVariableW(L"AURORA_FLY_YAW",turnText,32)) turn=_wtof(turnText);
+    app.renderer.flying=speed!=0 || turn!=0;
+    app.renderer.sampleFrames(app.world,app.view,8,0);
     for(int frame=0;frame<frames;frame++) {
         // Negative speed flies backwards; AURORA_FLY_YAW turns (radians per frame).
         app.view.yaw+=turn;
@@ -734,7 +903,15 @@ static int flyViews(App& app) {
             change/=double(image.size()/4);
         }
         csv<<frame<<','<<app.world.zoomLog10<<','<<ms<<','<<change<<','<<over<<','<<usedScale<<'\n';csv.flush();
-        if(every>0 && (frame%every==0 || frame==frames-1)) app.renderer.capture((out/(L"frame-"+std::to_wstring(frame)+L".png")).wstring());
+        if(every>0 && (frame%every==0 || frame==frames-1)) {
+            app.renderer.capture((out/(L"frame-"+std::to_wstring(frame)+L".png")).wstring());
+            if(reference) {
+                auto raw=reference->referenceFrame(app.world,app.view);
+                std::ofstream file(out/(L"reference-"+std::to_wstring(frame)+L".rgba"),std::ios::binary);
+                file.write(reinterpret_cast<const char*>(raw.data()),std::streamsize(raw.size()));
+                if(!file) throw std::runtime_error("Cannot write temporal reference image");
+            }
+        }
         previous=std::move(image);
     }
     saveFlight(app.world,app.view,out/L"end.aurora");
@@ -755,16 +932,19 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
     bool galleryMode=std::wstring(commandLine).find(L"--gallery")!=std::wstring::npos;
     bool regressionMode=std::wstring(commandLine).find(L"--regression")!=std::wstring::npos;
     bool benchViewsMode=std::wstring(commandLine).find(L"--bench-views")!=std::wstring::npos;
+    bool batchViewsMode=std::wstring(commandLine).find(L"--batch-views")!=std::wstring::npos;
     bool diagViewsMode=std::wstring(commandLine).find(L"--diag-views")!=std::wstring::npos;
+    bool raceCheckMode=std::wstring(commandLine).find(L"--race-check")!=std::wstring::npos;
     bool flyViewsMode=std::wstring(commandLine).find(L"--fly-views")!=std::wstring::npos;
-    bool benchmark=flyViewsMode||benchViewsMode||diagViewsMode||fieldMode||microMode||frameMode||replayMode||huntMode||profileMode||cornersMode||gapsMode||regressionMode||galleryMode||std::wstring(commandLine).find(L"--benchmark")!=std::wstring::npos;
+    bool temporalAuditMode=std::wstring(commandLine).find(L"--temporal-audit")!=std::wstring::npos;
+    bool benchmark=raceCheckMode||batchViewsMode||temporalAuditMode||flyViewsMode||benchViewsMode||diagViewsMode||fieldMode||microMode||frameMode||replayMode||huntMode||profileMode||cornersMode||gapsMode||regressionMode||galleryMode||std::wstring(commandLine).find(L"--benchmark")!=std::wstring::npos;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
     int result=0;
     try {
         App app;app.persist=!benchmark;
         wchar_t executable[MAX_PATH]{};GetModuleFileName(nullptr,executable,MAX_PATH);app.directory=std::filesystem::path(executable).parent_path();
-        if(!benchmark) app.restore();
+        if(!benchmark) {app.restore();app.loadRace();}
         if(!benchmark && std::wstring(commandLine).find(L"--load-flight")!=std::wstring::npos) {
             loadFlight(app.world,app.view,app.directory/L"last-flight.aurora");
             // AURORA_AUTOPILOT=1 continues a loaded flight in guided mode (diagnostic flights).
@@ -784,7 +964,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
         if(std::wstring(commandLine).find(L"--trace-compact")!=std::wstring::npos) app.renderer.setTracePath(1);
         else if(std::wstring(commandLine).find(L"--trace-legacy")!=std::wstring::npos) app.renderer.setTracePath(0);
         RAWINPUTDEVICE raw{1,2,0,window};RegisterRawInputDevices(&raw,1,sizeof(raw));
-        if(benchmark) {result=flyViewsMode?flyViews(app):benchViewsMode?benchViews(app):diagViewsMode?diagViews(app):fieldMode?fieldRegression(app):microMode?microMotion(app):frameMode?frameProfile(app,!flightMode && std::wstring(commandLine).find(L"--exercise-switch")!=std::wstring::npos,flightMode):replayMode?replay(app,std::wstring(commandLine).find(L"--native-only")!=std::wstring::npos,std::wstring(commandLine).find(L"--batch-details")!=std::wstring::npos):huntMode?hunt(app):profileMode?profile(app):cornersMode?corners(app):gapsMode?gaps(app):regressionMode?regression(app):galleryMode?gallery(app):validateNative(app);DestroyWindow(window);}
+        if(benchmark) {result=raceCheckMode?raceCheck(app):batchViewsMode?benchViews(app,true):temporalAuditMode?flyViews(app,true):flyViewsMode?flyViews(app):benchViewsMode?benchViews(app):diagViewsMode?diagViews(app):fieldMode?fieldRegression(app):microMode?microMotion(app):frameMode?frameProfile(app,!flightMode && std::wstring(commandLine).find(L"--exercise-switch")!=std::wstring::npos,flightMode):replayMode?replay(app,std::wstring(commandLine).find(L"--native-only")!=std::wstring::npos,std::wstring(commandLine).find(L"--batch-details")!=std::wstring::npos):huntMode?hunt(app):profileMode?profile(app):cornersMode?corners(app):gapsMode?gaps(app):regressionMode?regression(app):galleryMode?gallery(app):validateNative(app);DestroyWindow(window);}
         else {
             app.enableFlightDiagnostics();
             // Optional diagnostic: AURORA_FRAME_LOG=<file> records every presented
@@ -805,7 +985,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
             double startupMs=app.renderer.warmUp(app.world,app.view,app.palette);
             adapterLog<<"GPU startup preparation: "<<startupMs<<" ms\n";adapterLog.flush();
             ShowWindow(window,SW_SHOW);UpdateWindow(window);
-            auto last=Clock::now(),stats=last;int frames=0,settle=0;bool quit=false;
+            auto last=Clock::now(),stats=last;int frames=0;FrameSettling settle;bool quit=false;
+            settle.rendered(true,app.renderer.usingTemporal());
             while(!quit) {
                 MSG message{};
                 while(PeekMessage(&message,nullptr,0,0,PM_REMOVE)) {
@@ -813,17 +994,18 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR commandLine,int) {
                     TranslateMessage(&message);DispatchMessage(&message);
                 }
                 if(quit) break;
-                if(!app.active || IsIconic(window)) {app.renderer.markIdle();settle=0;MsgWaitForMultipleObjectsEx(0,nullptr,INFINITE,QS_ALLINPUT,MWMO_INPUTAVAILABLE);last=Clock::now();stats=last;frames=0;continue;}
+                if(!app.active || IsIconic(window)) {app.renderer.markIdle();settle.clear();MsgWaitForMultipleObjectsEx(0,nullptr,INFINITE,QS_ALLINPUT,MWMO_INPUTAVAILABLE);last=Clock::now();stats=last;frames=0;continue;}
                 // Still frames after stopping let temporal anti-aliasing settle. With the
                 // history at window size a still needs about 48 frames for full detail.
-                if(!app.moving() && !app.dirty && settle>0) {settle--;app.dirty=true;}
+                if(!app.moving() && !app.dirty && settle.pending()) app.dirty=true;
                 if(!app.moving() && !app.dirty) {app.saveSlowFlight();app.renderer.markIdle();MsgWaitForMultipleObjectsEx(0,nullptr,INFINITE,QS_ALLINPUT,MWMO_INPUTAVAILABLE);last=Clock::now();stats=last;frames=0;continue;}
                 if(!app.renderer.waitForFrame()) continue;
                 auto now=Clock::now();double dt=std::chrono::duration<double>(now-last).count();last=now;
                 advanceFlightTime(dt,[&](double step){app.update(step);});
                 if(app.dirty) {
-                    app.world.prepare();app.renderer.flying=app.moving();app.renderer.render(app.world,app.view,app.palette);app.recordFlightFrame();app.overlay();app.renderer.present();app.dirty=false;frames++;
-                    if(app.moving()) settle=48;
+                    bool cameraMoving=app.moving() || app.cameraChanged;
+                    app.world.prepare();app.renderer.flying=cameraMoving;app.renderer.render(app.world,app.view,app.palette);app.recordFlightFrame();app.overlay();app.renderer.present();app.dirty=false;frames++;
+                    settle.rendered(cameraMoving || app.renderer.restartedHistory(),app.renderer.usingTemporal());app.cameraChanged=false;
                     if(frameLog.is_open()) frameLog<<"F,"<<app.renderer.submittedSerial()<<','<<std::chrono::duration<double>(now.time_since_epoch()).count()<<','<<dt*1000<<','<<app.renderer.resolutionFactor()<<','<<app.world.zoomLog10<<"\n";
                     double elapsed=std::chrono::duration<double>(now-stats).count();
                     if(elapsed>=.75) {app.fps=frames/elapsed;frames=0;stats=now;}

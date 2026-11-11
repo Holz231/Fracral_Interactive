@@ -35,6 +35,7 @@ struct alignas(16) FrameConstants {
     Float4 jitter,prevRight,prevUp,prevForward,prevCamera,temporal,output;
 };
 class Renderer {
+    friend struct RendererTestAccess;
     HWND window=nullptr;
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
@@ -53,7 +54,7 @@ class Renderer {
     std::array<ComPtr<ID3D11ShaderResourceView>,2> historyViews;
     ComPtr<ID3D11PixelShader> temporalShader,presentTemporalShader;
     int historyIndex=0,jitterIndex=0,historyWidth=0,historyHeight=0;
-    bool historyValid=false,frameTemporal=false,temporalUpscale=true;
+    bool historyValid=false,historyRestarted=false,frameTemporal=false,temporalUpscale=true;
     Vec3 previousRight{},previousUp{},previousForward{};
     double previousUnit=0;
     float previousJitterX=0,previousJitterY=0;
@@ -95,6 +96,7 @@ class Renderer {
     // From adaptiveBatch on, a queue shorter than SEGMENT_QUEUE (fractal.hlsl)
     // already uses the parallel intervals; from segmentBatch on, every queue does.
     static constexpr int rayBatches=20,segmentBatch=8,adaptiveBatch=2;
+    bool skipEmptyScan=true;
     std::array<ComPtr<ID3D11Query>,5> passQueries;
     bool measurePasses=false,legacyScheduling=false,measureBatches=false;
     std::array<ComPtr<ID3D11Query>,maxRayBatches*2+1> batchQueries;
@@ -124,6 +126,7 @@ class Renderer {
     uint64_t resumeSerial=0;
     // First dynamic-resolution scale after a new render target (Profile::capStart).
     double restartScale=1;bool restartPending=false;
+    void restartResolution();
     // After a capStart restart resolution control starts at once (slow samples cannot
     // lower the floor) and samples up to climbSerial may raise the scale in one step.
     // Idle resume waits settleFrames=20 as before.
@@ -132,6 +135,7 @@ class Renderer {
     double resolutionScale=1,gpuMs=0,latestGpuMs=0;
     uint64_t frameSerial=0,newestGpuSerial=0;
     bool timerReady=false;
+    int previousPalette=-1;
     ComPtr<ID3D11PixelShader> compilePixel(int steps,int shadows,int ao,bool fast,int diagnostic=0,bool cull=true,bool fastCitadel=true,bool cachePrefix=true,bool fastMarch=true,bool compact=true,int kind=1,int samples=0);
     void makeBackBuffer();
     void makeSceneTarget(int w,int h);
@@ -155,6 +159,8 @@ public:
     bool waitForFrame();
     void setTracePath(int path) {tracePath=path;}
     bool usedCompaction() const {return lastCompacted;}
+    bool usingTemporal() const {return frameTemporal;}
+    bool restartedHistory() const {return historyRestarted;}
     bool hasFramePacing() const {return frameReady!=nullptr;}
     void resize(int,int);
     void setQuality(int);
@@ -177,6 +183,8 @@ public:
     // Offline flight tests: feed a synchronously measured GPU frame time.
     void feedFrameTime(double ms) {latestGpuMs=ms;latestScale=dynamicScale;freshSample=true;updateDynamicScale();}
     float temporalBlend=.1f,temporalSharpen=.25f;
+    bool temporalDetail=true;
+    int temporalPhases=0; // 0: choose from output/traced size; diagnostic override.
     void resetHistory() {historyValid=false;}
     void render(const World&,const View&,int palette,bool timed=true);
     void present();
@@ -199,6 +207,9 @@ public:
     double profileMilliseconds(const World&,const View&,int profile);
     // Complete interactive frame path (trace, shade, upscale), retired one frame at a time.
     std::vector<double> sampleFrames(const World&,const View&,int frames,int warmup);
+    // Offline image-quality reference: native output size, averaged jittered
+    // raw samples, without temporal filtering. Use a separate Renderer instance.
+    std::vector<unsigned char> referenceFrame(const World&,const View&,int samples=8);
     // Diagnostics (shaders compiled with TRACE_STATS=1): field calls/iterations
     // per pixel, plus the traced (log depth, status) image of the compacted path.
     std::vector<uint32_t> traceStatistics(const World&,const View&,std::vector<float>* rays=nullptr);

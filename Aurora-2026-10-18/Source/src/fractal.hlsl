@@ -851,6 +851,9 @@ void prepareRays(uint3 id:SV_DispatchThreadID) {
     dispatchOutput[8]=parallel?0:dispatchOutput[0];dispatchOutput[9]=dispatchOutput[1];dispatchOutput[10]=1;
     dispatchOutput[12]=parallel?dispatchOutput[4]:0;dispatchOutput[13]=dispatchOutput[5];dispatchOutput[14]=1;
     #if SORT_RAYS
+    // Dispatch arguments above must still be reset for an empty queue. Its
+    // buckets are unused: avoid 128 serial UAV reads/writes before a no-op.
+    if(groups==0 && outputInfo.z>0) return;
     uint offset=0;
     [loop] for(uint bin=0;bin<128;bin++) {uint count=rayBuckets[bin];rayBuckets[bin]=offset;offset+=count;}
     #endif
@@ -934,32 +937,60 @@ float4 temporalMain(VertexOut input):SV_Target {
     // samples of successive frames add up to output-resolution detail. Pixels
     // without usable history take the soft kernel sized in traced samples.
     float upscale=max(1,outputInfo.y/renderInfo.y),nearestWeight=0;
+    float detail=temporalInfo.w>0?3.5:2.29;
+    float2 nearestOffset=float2(clamp(p,0,limit))-grid;
+    float nearestSquared=dot(nearestOffset,nearestOffset);
+    if(temporalInfo.w>0) nearestWeight=exp(-detail*nearestSquared*upscale*upscale);
     float3 current=0,soft=0,m1=0,m2=0,lo=1e9,hi=-1e9;float weights=0,softWeights=0;
     float nearest=1e30;bool surface=false;
+    float farthest=-1e30;
     [unroll] for(int y=-1;y<=1;y++) [unroll] for(int x=-1;x<=1;x++) {
         int2 q=clamp(p+int2(x,y),0,limit);
         float3 c=toYCoCg(frameTexture.Load(int3(q,0)).rgb);
         float2 offset=float2(q)-grid;float s=exp(-2.29*dot(offset,offset));
-        float w=upscale>1.01?exp(-2.29*dot(offset,offset)*upscale*upscale):s;
-        soft+=c*s;softWeights+=s;current+=c*w;weights+=w;nearestWeight=max(nearestWeight,w);
+        // Normalize relative to the nearest sample. The common exponential
+        // factor cancels, keeping the sum >= 1 even at large upscale ratios.
+        float w=temporalInfo.w>0?exp(-detail*max(0,dot(offset,offset)-nearestSquared)*upscale*upscale):
+            (upscale>1.01?exp(-detail*dot(offset,offset)*upscale*upscale):s);
+        soft+=c*s;softWeights+=s;current+=c*w;weights+=w;
+        if(temporalInfo.w<=0) nearestWeight=max(nearestWeight,w);
         m1+=c;m2+=c*c;lo=min(lo,c);hi=max(hi,c);
         float2 ray=rayImage.Load(int4(q,0,0));
         // Reproject with the closest surface around the pixel so edges move
         // with the foreground; escaped rays only rotate.
-        if(ray.y!=0 && ray.x<nearest) {nearest=ray.x;surface=true;}
+        if(ray.y>0 || (temporalInfo.w<=0 && ray.y!=0)) {nearest=min(nearest,ray.x);farthest=max(farthest,ray.x);surface=true;}
     }
     current/=max(weights,1e-6);soft/=max(softWeights,1e-6);
     float3 mean=m1/9,sigma=sqrt(max(0,m2/9-mean*mean));
-    float3 boxLo=max(lo,mean-sigma*TAA_SIGMA),boxHi=min(hi,mean+sigma*TAA_SIGMA);
+    float boxSigma=temporalInfo.w>0?1.75:TAA_SIGMA;
+    float3 boxLo=max(lo,mean-sigma*boxSigma),boxHi=min(hi,mean+sigma*boxSigma);
     float2 uv=float2(screen.x,-screen.y);
     float3 dir=normalize(viewRight.xyz*uv.x+viewUp.xyz*uv.y+viewForward.xyz*1.85);
     float3 seen=surface?dir*exp2(min(nearest,100))-prevCamera.xyz:dir;
+    float seenScale=0;
+    if(temporalInfo.w>0 && surface) {
+        // Work in units of the hit distance. Projection cancels this scale;
+        // keep it separately for depth validation, even beyond float range.
+        seen=dir-prevCamera.xyz*exp2(clamp(-nearest,-120,120));
+        seenScale=nearest;
+    }
     float depth=dot(seen,prevForward.xyz);
     float3 result=soft;
     if(temporalInfo.x>0 && depth>0) {
         float2 projected=float2(dot(seen,prevRight.xyz),dot(seen,prevUp.xyz))*(1.85/depth);
         float2 previous=float2(projected.x*outputInfo.y+outputInfo.x,outputInfo.y-projected.y*outputInfo.y)*.5;
         if(all(previous>=0) && all(previous<=outputInfo.xy)) {
+            // Alpha carries log radial depth in that frame's camera units.
+            // Nearest-neighbour depth avoids blending foreground and background.
+            // The log unit correction preserves comparisons through deep rebases.
+            float trust=1;
+            if(temporalInfo.w>0) {
+                int2 hp=clamp(int2(previous),0,int2(outputInfo.xy)-1);
+                float oldDepth=historyTexture.Load(int3(hp,0)).a;
+                float expected=seenScale+log2(max(length(seen),1e-30))+prevCamera.w;
+                float tolerance=.04+abs(expected)*.001+min(.2,max(0,farthest-nearest)*.25);
+                trust=surface?(oldDepth<30000?1-smoothstep(tolerance,tolerance*2,abs(oldDepth-expected)):0):(oldDepth>=30000?1:0);
+            }
             float3 history=toYCoCg(sampleHistory(previous));
             float3 center=.5*(boxHi+boxLo),extent=.5*(boxHi-boxLo)+1e-4,offset=history-center;
             float3 ratio=abs(offset/extent);float outside=max(ratio.x,max(ratio.y,ratio.z));
@@ -967,10 +998,11 @@ float4 temporalMain(VertexOut input):SV_Target {
             // Luminance-weighted blend suppresses single bright or dark samples.
             float a=temporalInfo.y/(1+current.x),b=(1-temporalInfo.y)/(1+history.x);
             if(upscale>1.01) a*=max(nearestWeight,.5);
-            result=(current*a+history*b)/(a+b);
+            float3 accumulated=(current*a+history*b)/(a+b);
+            result=lerp(soft,accumulated,trust);
         }
     }
-    return float4(max(fromYCoCg(result),0),1);
+    return float4(max(fromYCoCg(result),0),temporalInfo.w>0?(surface?nearest:60000):1);
 }
 float4 presentTemporal(VertexOut input):SV_Target {
     // Bilinear upscale of the resolved history with a light, clamped sharpen

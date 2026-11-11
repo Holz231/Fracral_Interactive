@@ -5,7 +5,7 @@ Each round runs every variant (order alternates per round) through --bench-views
 records per-fixture min and median GPU frame times. Reports min-of-min, median-of-median
 and the ratio to the first variant. Images from the last round are kept per variant.
 """
-import argparse, csv, os, subprocess, statistics
+import argparse, csv, json, os, subprocess, statistics
 import numpy as np
 from PIL import Image
 
@@ -50,8 +50,10 @@ def main():
     ap.add_argument('--size', default='1980x1058')
     ap.add_argument('--fixtures', default='')
     ap.add_argument('--tag', default='ab')
+    ap.add_argument('--output', default=os.path.join(ROOT, 'results'))
     a = ap.parse_args()
     variants = [parse_variant(v) for v in a.variant]
+    output_root = os.path.abspath(a.output)
     fx_dir = os.path.join(ROOT, 'fixtures')
     names = a.fixtures.split(',') if a.fixtures else sorted(f[:-7] for f in os.listdir(fx_dir) if f.endswith('.aurora'))
     fixtures = [os.path.join(fx_dir, n + '.aurora') for n in names]
@@ -60,7 +62,8 @@ def main():
     for r in range(a.rounds):
         order = variants if r % 2 == 0 else list(reversed(variants))
         for name, exe, env in order:
-            out = os.path.join(ROOT, 'results', f'{a.tag}-{name}')
+            out = os.path.join(output_root, f'{a.tag}-{name}')
+            print(f'round {r + 1}/{a.rounds}: {name}', flush=True)
             rows = run(exe, out, a.size, a.frames, env, fixtures)
             for n in names:
                 mins[name][n].append(float(rows[n]['min_ms']))
@@ -91,12 +94,14 @@ def main():
         tot16 = 0
         worst = []
         for n in names:
-            md, p16 = diff(os.path.join(ROOT, 'results', f'{a.tag}-{base}', n + '.png'),
-                           os.path.join(ROOT, 'results', f'{a.tag}-{v[0]}', n + '.png'))
+            md, p16 = diff(os.path.join(output_root, f'{a.tag}-{base}', n + '.png'),
+                           os.path.join(output_root, f'{a.tag}-{v[0]}', n + '.png'))
             tot16 += p16
             worst.append((p16, n, md))
         worst.sort(reverse=True)
         print(line, 'total px>16:', tot16, 'worst:', [(n, p, round(m, 3)) for p, n, m in worst[:4]])
+    with open(os.path.join(output_root, f'{a.tag}-rounds.json'), 'w') as output:
+        json.dump({'size': a.size, 'frames': a.frames, 'rounds': a.rounds, 'minimum_ms': mins, 'median_ms': meds}, output, indent=2)
 
 
 if __name__ == '__main__':

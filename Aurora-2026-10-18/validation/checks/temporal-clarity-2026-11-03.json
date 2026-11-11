@@ -1,0 +1,423 @@
+{
+  "date": "2026-11-03",
+  "adapter": "NVIDIA GeForce RTX 4070 SUPER",
+  "executable_sha256": "37FD59867178FFB197612BE4368F99B8146E4DFCB52AB6BC17734FC7CDDD3A36",
+  "hlsl_sha256": "9C875DD4634D9AE93C3C760A80F4A686371F07258D92ED5517F940D53C4EDF0A",
+  "ctest_passed": 4,
+  "single_frame_pngs_identical": 14,
+  "unfinished_pixels": 0,
+  "field_check": {
+    "poses": 48,
+    "gpu_cpu_samples": 24576,
+    "max_relative_error": 0.0512561,
+    "max_pixel_error": 0.131132,
+    "max_tolerance_ratio": 0.544497,
+    "relative_allowance": 2E-05,
+    "pixel_allowance": 0.05
+  },
+  "zoom_check": {
+    "checkpoints": [
+      {
+        "zoom_log10": 0.00171405,
+        "gpu_field_relative_error": 6.22968E-07,
+        "unit_change_mean_pixel_error": 4.38771E-05,
+        "motion_max_mean_pixel_change": 0.00163076
+      },
+      {
+        "zoom_log10": 6.00366,
+        "gpu_field_relative_error": 0.00932019,
+        "unit_change_mean_pixel_error": 0.000276021,
+        "motion_max_mean_pixel_change": 0.00373892
+      },
+      {
+        "zoom_log10": 24.0027,
+        "gpu_field_relative_error": 0.00912276,
+        "unit_change_mean_pixel_error": 0.000259797,
+        "motion_max_mean_pixel_change": 0.00315559
+      },
+      {
+        "zoom_log10": 80.0017,
+        "gpu_field_relative_error": 0.00733422,
+        "unit_change_mean_pixel_error": 0.000204021,
+        "motion_max_mean_pixel_change": 0.00793454
+      }
+    ],
+    "passed": true
+  },
+  "image_quality": {
+    "verified-1080": {
+      "corner": {
+        "before": {
+          "psnr": 32.172450491866606,
+          "mae": 3.1800315380096436,
+          "edge_ratio": 0.6985862453778585,
+          "gradient_error": 4.022669792175293,
+          "gpu_ms": 9.88619,
+          "frame_change": 8.990432926829268,
+          "steady_change": 11.595289375
+        },
+        "after": {
+          "psnr": 32.64029199024665,
+          "mae": 2.883763631184896,
+          "edge_ratio": 0.7546887596448263,
+          "gradient_error": 3.677487850189209,
+          "gpu_ms": 9.814015000000001,
+          "frame_change": 9.36697768292683,
+          "steady_change": 12.037678125000001
+        }
+      },
+      "interior": {
+        "before": {
+          "psnr": 29.646086116760355,
+          "mae": 4.624668121337891,
+          "edge_ratio": 0.7498677770296732,
+          "gradient_error": 5.462013244628906,
+          "gpu_ms": 5.99206,
+          "frame_change": 18.055092682926826,
+          "steady_change": 15.942553125
+        },
+        "after": {
+          "psnr": 30.672889637218162,
+          "mae": 3.967942555745443,
+          "edge_ratio": 0.8168876767158508,
+          "gradient_error": 4.676203727722168,
+          "gpu_ms": 5.99752,
+          "frame_change": 18.87010731707317,
+          "steady_change": 16.738025
+        }
+      }
+    },
+    "final-1080": {
+      "corner": {
+        "before": {
+          "psnr": 32.172450491866606,
+          "mae": 3.1800315380096436,
+          "edge_ratio": 0.6985862453778585,
+          "gradient_error": 4.022669792175293,
+          "gpu_ms": 9.550815,
+          "frame_change": 8.990432926829268,
+          "steady_change": 11.595289375
+        },
+        "after": {
+          "psnr": 32.64029098058966,
+          "mae": 2.8837732474009194,
+          "edge_ratio": 0.7546876072883606,
+          "gradient_error": 3.677493095397949,
+          "gpu_ms": 9.6208,
+          "frame_change": 9.366978292682926,
+          "steady_change": 12.037678125
+        }
+      },
+      "interior": {
+        "before": {
+          "psnr": 29.646086116760355,
+          "mae": 4.624668121337891,
+          "edge_ratio": 0.7498677770296732,
+          "gradient_error": 5.462013244628906,
+          "gpu_ms": 6.01805,
+          "frame_change": 18.055092682926826,
+          "steady_change": 15.942553125
+        },
+        "after": {
+          "psnr": 30.672865332637844,
+          "mae": 3.9679577350616455,
+          "edge_ratio": 0.8168863455454508,
+          "gradient_error": 4.676197369893392,
+          "gpu_ms": 6.016415,
+          "frame_change": 18.870118292682925,
+          "steady_change": 16.738046875000002
+        }
+      },
+      "user-current": {
+        "before": {
+          "psnr": 30.405105714285188,
+          "mae": 4.092785517374675,
+          "edge_ratio": 0.6588101983070374,
+          "gradient_error": 5.424991607666016,
+          "gpu_ms": 11.643899999999999,
+          "frame_change": 12.719764634146342,
+          "steady_change": 12.042153124999999
+        },
+        "after": {
+          "psnr": 30.914110881232265,
+          "mae": 3.7643520832061768,
+          "edge_ratio": 0.7081793546676636,
+          "gradient_error": 5.098730723063151,
+          "gpu_ms": 11.5441,
+          "frame_change": 13.311517073170732,
+          "steady_change": 12.602653125
+        }
+      }
+    },
+    "final-4k": {
+      "corner": {
+        "before": {
+          "psnr": 24.941569949274086,
+          "mae": 8.300061384836832,
+          "edge_ratio": 0.4199727674325307,
+          "gradient_error": 6.408082803090413,
+          "gpu_ms": 10.0946,
+          "frame_change": 9.097238292682928,
+          "steady_change": 11.8060990625
+        },
+        "after": {
+          "psnr": 25.067706849501338,
+          "mae": 8.146420955657959,
+          "edge_ratio": 0.439457635084788,
+          "gradient_error": 6.415728251139323,
+          "gpu_ms": 10.30895,
+          "frame_change": 9.362384512195124,
+          "steady_change": 12.1146875
+        }
+      },
+      "interior": {
+        "before": {
+          "psnr": 20.544307630651026,
+          "mae": 13.660045941670736,
+          "edge_ratio": 0.4668726722399394,
+          "gradient_error": 10.82240104675293,
+          "gpu_ms": 6.458675,
+          "frame_change": 18.07290975609756,
+          "steady_change": 15.89475
+        },
+        "after": {
+          "psnr": 20.58715438957506,
+          "mae": 13.549158414204916,
+          "edge_ratio": 0.48663122455279034,
+          "gradient_error": 10.820303916931152,
+          "gpu_ms": 6.494095,
+          "frame_change": 18.765956097560974,
+          "steady_change": 16.561418749999998
+        }
+      },
+      "user-current": {
+        "before": {
+          "psnr": 24.16164544777386,
+          "mae": 8.919588088989258,
+          "edge_ratio": 0.447205791870753,
+          "gradient_error": 7.385780334472656,
+          "gpu_ms": 12.206949999999999,
+          "frame_change": 13.63394024390244,
+          "steady_change": 12.896284375
+        },
+        "after": {
+          "psnr": 24.265679449596515,
+          "mae": 8.769632657368978,
+          "edge_ratio": 0.467318594455719,
+          "gradient_error": 7.38887357711792,
+          "gpu_ms": 12.381,
+          "frame_change": 14.053328048780486,
+          "steady_change": 13.309156250000001
+        }
+      },
+      "user-preview0817-slow": {
+        "before": {
+          "psnr": 22.0790280632354,
+          "mae": 11.60211213429769,
+          "edge_ratio": 0.4587313036123912,
+          "gradient_error": 9.090614318847656,
+          "gpu_ms": 15.148299999999999,
+          "frame_change": 20.145396341463417,
+          "steady_change": 21.394040625000002
+        },
+        "after": {
+          "psnr": 22.076759732568178,
+          "mae": 11.572005271911621,
+          "edge_ratio": 0.4772209624449412,
+          "gradient_error": 9.139739354451498,
+          "gpu_ms": 14.6708,
+          "frame_change": 20.56690365853659,
+          "steady_change": 21.79499375
+        }
+      },
+      "user-root-slow": {
+        "before": {
+          "psnr": 19.7405463341488,
+          "mae": 14.04887835184733,
+          "edge_ratio": 0.4806102216243744,
+          "gradient_error": 10.246148745218912,
+          "gpu_ms": 14.59235,
+          "frame_change": 24.75430487804878,
+          "steady_change": 24.318634375
+        },
+        "after": {
+          "psnr": 19.76038578651178,
+          "mae": 13.935354868570963,
+          "edge_ratio": 0.5019115110238394,
+          "gradient_error": 10.291234970092773,
+          "gpu_ms": 14.6283,
+          "frame_change": 25.360245121951216,
+          "steady_change": 24.924353125
+        }
+      }
+    },
+    "verified-still-4k": {
+      "corner": {
+        "before": {
+          "psnr": 25.021347775193046,
+          "mae": 7.9010009765625,
+          "edge_ratio": 0.5292482574780782,
+          "gradient_error": 6.686060428619385,
+          "gpu_ms": 11.6448,
+          "frame_change": 0.46342236363636363,
+          "steady_change": 0.46155603125
+        },
+        "after": {
+          "psnr": 25.144283658440354,
+          "mae": 7.782066822052002,
+          "edge_ratio": 0.5300008654594421,
+          "gradient_error": 6.676463603973389,
+          "gpu_ms": 11.7248,
+          "frame_change": 0.46078351136363627,
+          "steady_change": 0.4588120625
+        }
+      },
+      "interior": {
+        "before": {
+          "psnr": 20.28674095702768,
+          "mae": 13.633315722147623,
+          "edge_ratio": 0.5440219442049662,
+          "gradient_error": 11.293817520141602,
+          "gpu_ms": 6.7199349999999995,
+          "frame_change": 0.7727226250000001,
+          "steady_change": 0.77137971875
+        },
+        "after": {
+          "psnr": 20.384707755345055,
+          "mae": 13.481982549031576,
+          "edge_ratio": 0.5471668044726054,
+          "gradient_error": 11.267581303914389,
+          "gpu_ms": 6.770384999999999,
+          "frame_change": 0.7706615454545456,
+          "steady_change": 0.7683732812499999
+        }
+      }
+    },
+    "final-turn-1080": {
+      "corner": {
+        "before": {
+          "psnr": 31.36385557703071,
+          "mae": 3.7110184828440347,
+          "edge_ratio": 0.693963865439097,
+          "gradient_error": 4.6259206136067705,
+          "gpu_ms": 9.868995,
+          "frame_change": 27.137373170731706,
+          "steady_change": 28.155640625
+        },
+        "after": {
+          "psnr": 32.16640902557967,
+          "mae": 3.339641809463501,
+          "edge_ratio": 0.7413493990898132,
+          "gradient_error": 4.261422475179036,
+          "gpu_ms": 9.96096,
+          "frame_change": 27.779312195121957,
+          "steady_change": 28.79014375
+        }
+      },
+      "interior": {
+        "before": {
+          "psnr": 28.274432379912593,
+          "mae": 5.9807658195495605,
+          "edge_ratio": 0.6808214584986368,
+          "gradient_error": 7.554760615030925,
+          "gpu_ms": 6.71736,
+          "frame_change": 43.61389268292683,
+          "steady_change": 40.62958125
+        },
+        "after": {
+          "psnr": 29.1138479617012,
+          "mae": 5.395066897074382,
+          "edge_ratio": 0.7328180273373922,
+          "gradient_error": 6.960193792978923,
+          "gpu_ms": 6.7712,
+          "frame_change": 44.77895975609756,
+          "steady_change": 41.758681249999995
+        }
+      }
+    },
+    "final-ultra-4k": {
+      "corner": {
+        "before": {
+          "psnr": 29.46252240375508,
+          "mae": 4.4084694385528564,
+          "edge_ratio": 0.586067795753479,
+          "gradient_error": 4.762069940567017,
+          "gpu_ms": 21.473799999999997,
+          "frame_change": 8.06446423076923,
+          "steady_change": 8.949543125
+        },
+        "after": {
+          "psnr": 29.565835607176407,
+          "mae": 4.301998734474182,
+          "edge_ratio": 0.6163695156574249,
+          "gradient_error": 4.700701713562012,
+          "gpu_ms": 21.2448,
+          "frame_change": 8.23119673076923,
+          "steady_change": 9.071060000000001
+        }
+      },
+      "user-current": {
+        "before": {
+          "psnr": 29.520264951931942,
+          "mae": 4.670233488082886,
+          "edge_ratio": 0.579293966293335,
+          "gradient_error": 5.206367015838623,
+          "gpu_ms": 27.14815,
+          "frame_change": 14.000553846153847,
+          "steady_change": 13.454275
+        },
+        "after": {
+          "psnr": 29.785068687606323,
+          "mae": 4.4915924072265625,
+          "edge_ratio": 0.6060490906238556,
+          "gradient_error": 5.118897438049316,
+          "gpu_ms": 26.579349999999998,
+          "frame_change": 14.364369230769228,
+          "steady_change": 13.83394375
+        }
+      }
+    },
+    "verified-performance-4k": {
+      "corner": {
+        "before": {
+          "psnr": 22.74587542381429,
+          "mae": 11.3163423538208,
+          "edge_ratio": 0.2966131865978241,
+          "gradient_error": 7.022071361541748,
+          "gpu_ms": 6.77472,
+          "frame_change": 6.1289686538461545,
+          "steady_change": 6.68932375
+        },
+        "after": {
+          "psnr": 22.813716607987267,
+          "mae": 11.214046955108643,
+          "edge_ratio": 0.31353600323200226,
+          "gradient_error": 7.0588836669921875,
+          "gpu_ms": 6.85976,
+          "frame_change": 6.458914807692309,
+          "steady_change": 6.9675015625
+        }
+      },
+      "user-root-slow": {
+        "before": {
+          "psnr": 17.165378406784725,
+          "mae": 20.20715045928955,
+          "edge_ratio": 0.3168562799692154,
+          "gradient_error": 11.850519180297852,
+          "gpu_ms": 8.04797,
+          "frame_change": 20.543542307692306,
+          "steady_change": 19.545596875
+        },
+        "after": {
+          "psnr": 17.16711774534194,
+          "mae": 20.142455101013184,
+          "edge_ratio": 0.3388788402080536,
+          "gradient_error": 11.958784103393555,
+          "gpu_ms": 8.20923,
+          "frame_change": 21.352034615384618,
+          "steady_change": 20.363218749999998
+        }
+      }
+    }
+  }
+}
